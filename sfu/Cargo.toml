@@ -1,0 +1,27 @@
+[workspace]
+resolver = "3"
+members = ["crates/sfu-core"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.99"
+license = "UNLICENSED"
+publish = false
+repository = "https://github.com/discordy-voics/voice"
+
+[workspace.dependencies]
+sfu-core = { path = "crates/sfu-core" }
+sfu-control = { path = "crates/sfu-control" }
+str0m = { version = "0.24.1", default-features = false, features = ["aws-lc-rs"] }
+tokio = { version = "1.47", features = ["rt-multi-thread", "macros", "net", "time", "sync", "io-util", "signal"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+missing_debug_implementations = "warn"
+
