@@ -135,9 +135,7 @@ impl RtpRewriter {
     /// Builds a mapping that makes `packet` the immediate successor of the last forwarded packet.
     fn anchor_after(&self, previous: &Mapping, packet: InboundPacket) -> Mapping {
         let out_seq = previous.highest_out_seq.wrapping_add(1);
-        let elapsed_us = packet
-            .arrival_us
-            .saturating_sub(previous.newest_arrival_us);
+        let elapsed_us = packet.arrival_us.saturating_sub(previous.newest_arrival_us);
         let advance = (elapsed_us.saturating_mul(u64::from(self.clock_rate)) / 1_000_000).max(1);
         // Truncation is intended: RTP timestamps are modulo 2^32.
         let out_ts = previous.newest_out_ts.wrapping_add(advance as u32);
