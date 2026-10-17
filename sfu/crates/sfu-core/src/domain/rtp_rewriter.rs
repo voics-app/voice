@@ -185,7 +185,10 @@ mod tests {
     fn first_packet_of_a_long_running_stream_starts_with_zero_rollover() {
         let mut rw = RtpRewriter::new(OPUS);
         assert_eq!(rw.rewrite(pkt(1, 70_000, 5, 0)), out(70_000 - 65_536, 5));
-        assert_eq!(rw.rewrite(pkt(1, 70_001, 965, 20)), out(70_001 - 65_536, 965));
+        assert_eq!(
+            rw.rewrite(pkt(1, 70_001, 965, 20)),
+            out(70_001 - 65_536, 965)
+        );
     }
 
     #[test]

@@ -4,4 +4,5 @@
 //! - [`application`]: use cases and the ports they drive.
 //! - [`infrastructure`]: the str0m-based media engine and the UDP mux.
 
+pub mod application;
 pub mod domain;
