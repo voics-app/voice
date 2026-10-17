@@ -1,0 +1,23 @@
+[package]
+name = "sfu"
+description = "Discordy SFU binary: media engine, control server and operational endpoints"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[[bin]]
+name = "sfu"
+path = "src/main.rs"
+
+[dependencies]
+sfu-core.workspace = true
+sfu-control.workspace = true
+tokio.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+
+[lints]
+workspace = true
