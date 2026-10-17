@@ -114,14 +114,17 @@ impl RtpRewriter {
         mapping.highest_in_seq = packet.seq;
     }
 
+    /// The first forwarded packet keeps its 16-bit sequence number and timestamp, but the
+    /// outbound roll-over counter starts at zero: the subscriber's SRTP context assumes ROC 0.
     fn identity(packet: InboundPacket) -> Mapping {
+        let out_seq = packet.seq & 0xFFFF;
         Mapping {
             source: packet.source,
-            seq_delta: 0,
+            seq_delta: out_seq.wrapping_sub(packet.seq),
             ts_delta: 0,
             floor_in_seq: packet.seq.saturating_sub(1),
             highest_in_seq: packet.seq,
-            highest_out_seq: packet.seq,
+            highest_out_seq: out_seq,
             newest_out_ts: packet.timestamp,
             newest_arrival_us: packet.arrival_us,
         }
@@ -176,6 +179,13 @@ mod tests {
     fn first_packet_keeps_its_original_numbers() {
         let mut rw = RtpRewriter::new(OPUS);
         assert_eq!(rw.rewrite(pkt(1, 500, 9_000, 0)), out(500, 9_000));
+    }
+
+    #[test]
+    fn first_packet_of_a_long_running_stream_starts_with_zero_rollover() {
+        let mut rw = RtpRewriter::new(OPUS);
+        assert_eq!(rw.rewrite(pkt(1, 70_000, 5, 0)), out(70_000 - 65_536, 5));
+        assert_eq!(rw.rewrite(pkt(1, 70_001, 965, 20)), out(70_001 - 65_536, 965));
     }
 
     #[test]
