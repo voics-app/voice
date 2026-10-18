@@ -1,0 +1,7 @@
+_build
+deps
+test
+cover
+Dockerfile
+.dockerignore
+erl_crash.dump

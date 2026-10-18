@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["crates/sfu-core", "crates/sfu-control", "crates/sfu"]
+members = ["crates/sfu-core", "crates/sfu-control", "bin/sfu"]
 
 [workspace.package]
 version = "0.1.0"
