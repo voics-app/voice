@@ -30,6 +30,9 @@ pub enum RegionError {
     /// All voice worker ids are taken.
     #[error("no free SNOWFLAKE_WORKER_ID left in 192-255")]
     NoWorkerId,
+    /// The node id is not a valid DNS label.
+    #[error("invalid node id `{0}`: use 1-63 lowercase letters, digits and hyphens")]
+    InvalidNodeId(String),
     /// The overlay has no `literals:` block to edit.
     #[error("overlay has no configMapGenerator literals block")]
     NoLiteralsBlock,
@@ -63,6 +66,33 @@ impl RegionName {
 }
 
 impl fmt::Display for RegionName {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+
+/// A validated voice node id: a DNS label, so it is safe inside a URL path.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NodeId(String);
+
+impl NodeId {
+    /// Validates `value`.
+    pub fn parse(value: &str) -> Result<Self, RegionError> {
+        let valid = (1..=63).contains(&value.len())
+            && !value.starts_with('-')
+            && !value.ends_with('-')
+            && value
+                .chars()
+                .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-');
+        if valid {
+            Ok(Self(value.to_owned()))
+        } else {
+            Err(RegionError::InvalidNodeId(value.to_owned()))
+        }
+    }
+}
+
+impl fmt::Display for NodeId {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(&self.0)
     }

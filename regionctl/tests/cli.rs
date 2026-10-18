@@ -391,7 +391,10 @@ fn drain_and_undrain_edit_one_literal() {
     let gitops = dir.path().to_str().unwrap();
 
     assert_eq!(
-        run(&["drain", "nl-home", "--gitops-dir", gitops], &[]),
+        run(
+            &["drain", "--region", "nl-home", "--gitops-dir", gitops],
+            &[]
+        ),
         ExitCode::SUCCESS
     );
     let drained = read(dir.path(), "regions/nl-home/kustomization.yaml");
@@ -402,7 +405,10 @@ fn drain_and_undrain_edit_one_literal() {
     );
 
     assert_eq!(
-        run(&["undrain", "nl-home", "--gitops-dir", gitops], &[]),
+        run(
+            &["undrain", "--region", "nl-home", "--gitops-dir", gitops],
+            &[]
+        ),
         ExitCode::SUCCESS
     );
     assert_eq!(
@@ -411,7 +417,7 @@ fn drain_and_undrain_edit_one_literal() {
     );
 
     assert_eq!(
-        run(&["drain", "mars", "--gitops-dir", gitops], &[]),
+        run(&["drain", "--region", "mars", "--gitops-dir", gitops], &[]),
         ExitCode::FAILURE
     );
 }
@@ -432,11 +438,29 @@ fn list_works_with_and_without_cloudflare() {
         run_with(&["list", "--gitops-dir", gitops], &cf_env(&api)),
         ExitCode::SUCCESS
     );
+    // nl-home carries Flux substitutions in its host, so there is nothing to look up.
+    assert!(api.state.lock().unwrap().requests.is_empty());
+
+    let env = cf_env(&api);
+    let add = [
+        "add",
+        "eu-west",
+        "--public-ip",
+        "198.51.100.4",
+        "--public-host",
+        "discordy-rtc-eu-west.voics.nl",
+        "--gitops-dir",
+        gitops,
+    ];
+    assert_eq!(run_with(&add, &env), ExitCode::SUCCESS);
+    api.state.lock().unwrap().requests.clear();
+    assert_eq!(
+        run_with(&["list", "--gitops-dir", gitops], &env),
+        ExitCode::SUCCESS
+    );
     let requests = api.state.lock().unwrap().requests.clone();
     assert_eq!(requests.len(), 1);
-    assert!(
-        requests[0].1.contains("name=%24%7BRTC_HOST_PREFIX%7D") || requests[0].1.contains("name=")
-    );
+    assert!(requests[0].1.contains("name=discordy-rtc-eu-west.voics.nl"));
 }
 
 #[test]
@@ -449,5 +473,90 @@ fn the_gitops_dir_is_required_and_must_be_a_checkout() {
             &[]
         ),
         ExitCode::FAILURE
+    );
+}
+
+/// Records the requests a fake gateway receives and answers `status`.
+fn start_gateway(status: u16) -> (String, Arc<Mutex<Vec<String>>>) {
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let base = format!("http://{}", listener.local_addr().unwrap());
+    let seen = Arc::new(Mutex::new(Vec::new()));
+    let shared = Arc::clone(&seen);
+    thread::spawn(move || {
+        for mut stream in listener.incoming().flatten() {
+            let mut buf = [0u8; 4096];
+            let n = stream.read(&mut buf).unwrap_or(0);
+            shared
+                .lock()
+                .unwrap()
+                .push(String::from_utf8_lossy(&buf[..n]).into_owned());
+            let _ = write!(
+                stream,
+                "HTTP/1.1 {status} X\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+            );
+        }
+    });
+    (base, seen)
+}
+
+#[test]
+fn node_drain_and_undrain_call_the_gateway_with_the_internal_token() {
+    let (base, seen) = start_gateway(204);
+    let env = [("INTERNAL_SERVICE_TOKEN", "internal-secret")];
+
+    assert_eq!(
+        run(&["drain", "eu-west-1", "--gateway-url", &base], &env),
+        ExitCode::SUCCESS
+    );
+    assert_eq!(
+        run(&["undrain", "eu-west-1", "--gateway-url", &base], &env),
+        ExitCode::SUCCESS
+    );
+
+    let requests = seen.lock().unwrap().clone();
+    assert_eq!(requests.len(), 2);
+    assert!(requests[0].starts_with("POST /internal/v1/voice/nodes/eu-west-1/drain HTTP/1.1"));
+    assert!(requests[1].starts_with("POST /internal/v1/voice/nodes/eu-west-1/undrain HTTP/1.1"));
+    assert!(
+        requests[0]
+            .to_ascii_lowercase()
+            .contains("x-internal-token: internal-secret")
+    );
+}
+
+#[test]
+fn node_drain_reports_gateway_errors_and_missing_tokens() {
+    let (base, seen) = start_gateway(401);
+    assert_eq!(
+        run(
+            &["drain", "eu-west-1", "--gateway-url", &base],
+            &[("INTERNAL_SERVICE_TOKEN", "wrong")]
+        ),
+        ExitCode::FAILURE
+    );
+    assert_eq!(
+        run(&["drain", "eu-west-1", "--gateway-url", &base], &[]),
+        ExitCode::FAILURE
+    );
+    assert_eq!(seen.lock().unwrap().len(), 1, "no request without a token");
+
+    let env = [("INTERNAL_SERVICE_TOKEN", "t")];
+    assert_eq!(
+        run(&["drain", "../etc", "--gateway-url", &base], &env),
+        ExitCode::FAILURE
+    );
+    assert_eq!(
+        seen.lock().unwrap().len(),
+        1,
+        "invalid ids never reach the gateway"
+    );
+}
+
+#[test]
+fn drain_needs_exactly_one_target() {
+    assert_eq!(run(&["drain"], &[]), ExitCode::from(2));
+    assert_eq!(
+        run(&["drain", "node-1", "--region", "eu-west"], &[]),
+        ExitCode::from(2)
     );
 }

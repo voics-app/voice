@@ -50,3 +50,13 @@ pub trait DnsGateway {
         proxied: bool,
     ) -> Result<DnsChange, AppError>;
 }
+
+/// The gateway internal API that drains live voice nodes.
+pub trait NodeDrainGateway {
+    /// Drains (`true`) or undrains (`false`) the node.
+    fn set_drained(
+        &self,
+        node: &crate::domain::region::NodeId,
+        drained: bool,
+    ) -> Result<(), AppError>;
+}

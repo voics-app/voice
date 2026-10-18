@@ -43,7 +43,8 @@ pub fn list_regions(
             continue;
         };
         let region = parse_overlay(&name, &overlay)?;
-        let status = match dns {
+        // Hand-written overlays may carry Flux ${VAR} substitutions that only resolve in-cluster.
+        let status = match dns.filter(|_| !region.public_host.contains("${")) {
             None => DnsStatus::Unchecked,
             Some(gateway) => match gateway.find_a_record(&region.public_host) {
                 Ok(None) => DnsStatus::Missing,

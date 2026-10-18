@@ -20,4 +20,7 @@ pub enum AppError {
     /// Cloudflare refused or could not be reached.
     #[error("cloudflare: {0}")]
     Dns(String),
+    /// The gateway refused or could not be reached.
+    #[error("gateway: {0}")]
+    Gateway(String),
 }

@@ -4,26 +4,46 @@ use std::ffi::OsString;
 use std::path::PathBuf;
 use std::process::ExitCode;
 
-use clap::{Parser, Subcommand};
+use clap::{Args, Parser, Subcommand};
 
 use crate::application::add_region::{AddRegion, add_region};
-use crate::application::error::AppError;
+use crate::application::drain_node::set_node_drain;
 use crate::application::list_regions::{DnsStatus, list_regions};
 use crate::application::ports::{DnsChange, DnsGateway};
 use crate::application::set_drain::{DrainChange, set_region_drain};
 use crate::infrastructure::cloudflare::{Cloudflare, Credentials, DEFAULT_API_BASE};
 use crate::infrastructure::fs_store::FsRegionStore;
+use crate::infrastructure::gateway::GatewayClient;
 
 /// Voice region control.
 #[derive(Debug, Parser)]
 #[command(name = "regionctl", version, about)]
 struct Cli {
-    /// Checkout of the `discordy-voics/gitops` repository.
+    /// Checkout of the `discordy-voics/gitops` repository (add, list, drain --region).
     #[arg(long, global = true, env = "REGIONCTL_GITOPS_DIR")]
     gitops_dir: Option<PathBuf>,
 
     #[command(subcommand)]
     command: Command,
+}
+
+/// What to drain: a live node through the gateway, or a whole region in gitops.
+#[derive(Debug, Args)]
+#[command(group = clap::ArgGroup::new("target").required(true).multiple(false))]
+struct DrainTarget {
+    /// Voice node id: drains the running node through the gateway (needs INTERNAL_SERVICE_TOKEN).
+    #[arg(group = "target")]
+    node_id: Option<String>,
+    /// Region name: records the drain in gitops so the region's nodes start draining.
+    #[arg(long, group = "target")]
+    region: Option<String>,
+    /// Gateway internal API.
+    #[arg(
+        long,
+        env = "GATEWAY_INTERNAL_URL",
+        default_value = "http://localhost:4000"
+    )]
+    gateway_url: String,
 }
 
 #[derive(Debug, Subcommand)]
@@ -46,16 +66,10 @@ enum Command {
     },
     /// List regions and the state of their DNS records.
     List,
-    /// Start a region's nodes in drain mode: no new voice sessions.
-    Drain {
-        /// Region name.
-        name: String,
-    },
-    /// Let a drained region accept new voice sessions again.
-    Undrain {
-        /// Region name.
-        name: String,
-    },
+    /// Stop a voice node (or a whole region) from accepting new sessions.
+    Drain(DrainTarget),
+    /// Let a drained voice node (or region) accept new sessions again.
+    Undrain(DrainTarget),
 }
 
 /// Runs the CLI. `env` looks up environment variables.
@@ -86,12 +100,12 @@ fn cloudflare(env: &impl Fn(&str) -> Option<String>) -> Option<Cloudflare> {
     Some(Cloudflare::new(base, credentials))
 }
 
-fn execute(cli: Cli, env: &impl Fn(&str) -> Option<String>) -> Result<(), String> {
-    let gitops_dir = cli
-        .gitops_dir
-        .ok_or("--gitops-dir (or REGIONCTL_GITOPS_DIR) is required")?;
-    let store = FsRegionStore::open(&gitops_dir).map_err(|e: AppError| e.to_string())?;
+fn open_store(gitops_dir: Option<&PathBuf>) -> Result<FsRegionStore, String> {
+    let dir = gitops_dir.ok_or("--gitops-dir (or REGIONCTL_GITOPS_DIR) is required")?;
+    FsRegionStore::open(dir).map_err(|e| e.to_string())
+}
 
+fn execute(cli: Cli, env: &impl Fn(&str) -> Option<String>) -> Result<(), String> {
     match cli.command {
         Command::Add {
             name,
@@ -99,6 +113,7 @@ fn execute(cli: Cli, env: &impl Fn(&str) -> Option<String>) -> Result<(), String
             public_host,
             dns_only,
         } => {
+            let store = open_store(cli.gitops_dir.as_ref())?;
             let dns = cloudflare(env).ok_or(
                 "CLOUDFLARE_API_TOKEN and CLOUDFLARE_ZONE_ID must both be set to create the DNS record",
             )?;
@@ -115,7 +130,7 @@ fn execute(cli: Cli, env: &impl Fn(&str) -> Option<String>) -> Result<(), String
                 DnsChange::Unchanged => "already up to date",
             };
             println!(
-                "region {name} added\n  host      {host} -> {ip} (DNS record {dns_note}, {mode})\n  node id   {node}\n  worker id {worker}\n  overlay   {dir}/regions/{name}/kustomization.yaml\n\nNext: review the diff, commit it to gitops and let Flux reconcile; the node then registers in etcd.",
+                "region {name} added\n  host      {host} -> {ip} (DNS record {dns_note}, {mode})\n  node id   {node}\n  worker id {worker}\n  overlay   regions/{name}/kustomization.yaml\n\nNext: review the diff, commit it to gitops and let Flux reconcile; the node then registers in etcd.",
                 name = added.region.name,
                 host = added.region.public_host,
                 ip = added.region.public_ip,
@@ -126,11 +141,11 @@ fn execute(cli: Cli, env: &impl Fn(&str) -> Option<String>) -> Result<(), String
                 },
                 node = added.region.node_id,
                 worker = added.region.worker_id,
-                dir = gitops_dir.display(),
             );
             Ok(())
         }
         Command::List => {
+            let store = open_store(cli.gitops_dir.as_ref())?;
             let dns = cloudflare(env);
             let rows = list_regions(&store, dns.as_ref().map(|d| d as &dyn DnsGateway))
                 .map_err(|e| e.to_string())?;
@@ -166,19 +181,38 @@ fn execute(cli: Cli, env: &impl Fn(&str) -> Option<String>) -> Result<(), String
             }
             Ok(())
         }
-        Command::Drain { name } => drain(&store, &name, true),
-        Command::Undrain { name } => drain(&store, &name, false),
+        Command::Drain(target) => drain(target, true, &cli.gitops_dir, env),
+        Command::Undrain(target) => drain(target, false, &cli.gitops_dir, env),
     }
 }
 
-fn drain(store: &FsRegionStore, name: &str, drained: bool) -> Result<(), String> {
-    let change = set_region_drain(store, name, drained).map_err(|e| e.to_string())?;
+fn drain(
+    target: DrainTarget,
+    drained: bool,
+    gitops_dir: &Option<PathBuf>,
+    env: &impl Fn(&str) -> Option<String>,
+) -> Result<(), String> {
     let state = if drained { "drained" } else { "active" };
-    match change {
-        DrainChange::Changed => println!(
-            "region {name} is now {state} in gitops; commit it and let Flux reconcile (restart the voice pod to apply it to a running node)"
-        ),
-        DrainChange::AlreadyInState => println!("region {name} is already {state}"),
+    if let Some(region) = target.region {
+        let store = open_store(gitops_dir.as_ref())?;
+        let change = set_region_drain(&store, &region, drained).map_err(|e| e.to_string())?;
+        match change {
+            DrainChange::Changed => println!(
+                "region {region} is now {state} in gitops; commit it and let Flux reconcile (restart the voice pod to apply it to a running node)"
+            ),
+            DrainChange::AlreadyInState => println!("region {region} is already {state}"),
+        }
+        return Ok(());
     }
+
+    let node_id = target.node_id.ok_or("a node id or --region is required")?;
+    let token = env("INTERNAL_SERVICE_TOKEN")
+        .filter(|t| !t.is_empty())
+        .ok_or("INTERNAL_SERVICE_TOKEN must be set to call the gateway")?;
+    let gateway = GatewayClient::new(target.gateway_url, token);
+    set_node_drain(&gateway, &node_id, drained).map_err(|e| e.to_string())?;
+    println!(
+        "node {node_id} is now {state}; confirm with `etcdctl get /discordy/voice/nodes/<region>/{node_id}`"
+    );
     Ok(())
 }

@@ -2,3 +2,4 @@
 
 pub mod cloudflare;
 pub mod fs_store;
+pub mod gateway;
