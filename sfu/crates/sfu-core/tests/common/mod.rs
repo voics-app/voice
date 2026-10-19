@@ -37,6 +37,7 @@ pub struct Client {
     local: SocketAddr,
     pub audio_ssrc: u32,
     pub video_layers: Vec<VideoLayer>,
+    pub screen: Option<VideoLayer>,
     pub received: Vec<Received>,
     pub connected: bool,
     seq: u64,
@@ -84,6 +85,7 @@ impl Client {
             local,
             audio_ssrc,
             video_layers,
+            screen: None,
             received: Vec::new(),
             connected: false,
             seq: 1,
@@ -122,6 +124,7 @@ impl Client {
             ],
             audio_ssrc: self.audio_ssrc,
             video_layers: self.video_layers.clone(),
+            screen: self.screen.clone(),
         }
     }
 
@@ -158,6 +161,11 @@ impl Client {
                     Some(layer.rid.as_str().into()),
                 );
             }
+        }
+        if let Some(screen) = &self.screen {
+            let smid = mid('v', screen.ssrc);
+            api.declare_media(smid, MediaKind::Video);
+            api.declare_stream_tx(screen.ssrc.into(), Some(screen.rtx_ssrc.into()), smid, None);
         }
         for &ssrc in remote_audio {
             let m = mid('a', ssrc);
@@ -207,6 +215,27 @@ impl Client {
                     VP8_PT.into(),
                     seq.into(),
                     (seq * 3_000) as u32 + layer as u32 * 1_000_000,
+                    now,
+                    payload.to_vec(),
+                )
+                .marker(marker)
+                .nackable(true),
+            );
+        }
+    }
+
+    /// Sends one VP8 packet on the screen share.
+    pub fn send_screen(&mut self, seq: u64, payload: &[u8], marker: bool) {
+        let now = Instant::now();
+        let Some(ssrc) = self.screen.as_ref().map(|s| s.ssrc) else {
+            return;
+        };
+        if let Some(stream) = self.rtc.direct_api().stream_tx(&ssrc.into()) {
+            stream.write_rtp(
+                RtpWrite::new(
+                    VP8_PT.into(),
+                    seq.into(),
+                    (seq * 3_000) as u32,
                     now,
                     payload.to_vec(),
                 )

@@ -266,14 +266,23 @@ impl Str0mRouter {
         kind: KeyframeRequestKind,
         now: Instant,
     ) {
-        let Some(publisher) = ssrc_of_video_mid(&mid)
-            .and_then(|ssrc| self.video_publishers.get(&ssrc))
-            .cloned()
-        else {
+        let Some(ssrc) = ssrc_of_video_mid(&mid) else {
             return;
         };
-        let Some(layer_ssrc) = self.forwarded_layer_ssrc(subscriber, &publisher) else {
+        let Some(publisher) = self.video_publishers.get(&ssrc).cloned() else {
             return;
+        };
+        let is_screen = self
+            .peers
+            .get(&publisher)
+            .is_some_and(|p| p.spec.is_screen(ssrc));
+        let layer_ssrc = if is_screen {
+            ssrc
+        } else {
+            let Some(layer_ssrc) = self.forwarded_layer_ssrc(subscriber, &publisher) else {
+                return;
+            };
+            layer_ssrc
         };
         self.request_keyframe(
             KeyframeNeed {
@@ -419,6 +428,9 @@ impl MediaRouter for Str0mRouter {
         if let Some(primary) = spec.primary_video() {
             self.video_publishers.insert(primary.ssrc, id.clone());
         }
+        if let Some(screen) = &spec.screen {
+            self.video_publishers.insert(screen.ssrc, id.clone());
+        }
 
         let mut peer = Peer::new(spec, built.rtc, now, INITIAL_BWE_KBPS * 1_000);
         for other_id in peers {
@@ -432,6 +444,20 @@ impl MediaRouter for Str0mRouter {
             self.reallocate(other_id, now);
         }
         self.reallocate(&id, now);
+        // A screen share is not layer-allocated, so the joiner needs its own keyframe for each.
+        let screens: Vec<KeyframeNeed> = peers
+            .iter()
+            .filter_map(|other_id| {
+                let screen = self.peers.get(other_id)?.spec.screen.as_ref()?;
+                Some(KeyframeNeed {
+                    publisher: other_id.clone(),
+                    ssrc: screen.ssrc,
+                })
+            })
+            .collect();
+        for need in screens {
+            self.request_keyframe(need, KeyframeRequestKind::Pli, now);
+        }
         info!(session = %id, peers = peers.len(), "session opened");
 
         Ok(LocalDescription {
@@ -445,6 +471,9 @@ impl MediaRouter for Str0mRouter {
             peer.rtc.disconnect();
             if let Some(primary) = peer.spec.primary_video() {
                 self.video_publishers.remove(&primary.ssrc);
+            }
+            if let Some(screen) = &peer.spec.screen {
+                self.video_publishers.remove(&screen.ssrc);
             }
         }
         self.demux.remove(id);
@@ -527,6 +556,7 @@ fn record_inbound(
                 meter.record(rtp.payload.len(), rtp.arrival_us);
             }
         }
+        TrackKind::Screen => {}
     }
 }
 

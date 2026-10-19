@@ -26,6 +26,8 @@ pub enum TrackKind {
     Audio,
     /// One video layer (index into the publisher's layers).
     VideoLayer(usize),
+    /// The publisher's screen share.
+    Screen,
 }
 
 /// An inbound RTP packet ready to be fanned out.
@@ -84,6 +86,16 @@ pub struct VideoSubscription {
     pub svc_filter: SvcFilter,
 }
 
+/// How a subscriber receives one publisher's screen share: forwarded as is, one layer.
+#[derive(Debug)]
+pub struct ScreenSubscription {
+    /// SSRC used towards the subscriber (the publisher's screen SSRC).
+    pub out_ssrc: u32,
+    /// Codec forwarded.
+    pub codec: VideoCodec,
+    rewriter: RtpRewriter,
+}
+
 /// A subscriber's outbound state for one publisher.
 #[derive(Debug)]
 pub struct Subscription {
@@ -92,6 +104,8 @@ pub struct Subscription {
     audio: RtpRewriter,
     /// Video, when both sides support the publisher's codec.
     pub video: Option<VideoSubscription>,
+    /// Screen share, when the publisher sends one and both sides support the codec.
+    pub screen: Option<ScreenSubscription>,
 }
 
 /// A keyframe the forwarder needs from a publisher.
@@ -151,6 +165,9 @@ impl Peer {
         if ssrc == self.spec.audio_ssrc {
             return Some(TrackKind::Audio);
         }
+        if self.spec.is_screen(ssrc) {
+            return Some(TrackKind::Screen);
+        }
         self.spec.layer_index(ssrc).map(TrackKind::VideoLayer)
     }
 
@@ -186,12 +203,31 @@ impl Peer {
             _ => None,
         };
 
+        let screen = match (&publisher.screen, publisher.video_codec()) {
+            (Some(stream), Some(codec_spec)) => match codec_spec.codec {
+                Codec::Video(codec) if self.spec.payload_type_for(codec_spec.codec).is_some() => {
+                    let smid = video_mid(stream.ssrc);
+                    api.declare_media(smid, RtcMediaKind::Video);
+                    let rtx = (stream.rtx_ssrc != 0).then(|| stream.rtx_ssrc.into());
+                    api.declare_stream_tx(stream.ssrc.into(), rtx, smid, None);
+                    Some(ScreenSubscription {
+                        out_ssrc: stream.ssrc,
+                        codec,
+                        rewriter: RtpRewriter::new(Codec::Video(codec).clock_rate()),
+                    })
+                }
+                _ => None,
+            },
+            _ => None,
+        };
+
         self.subscriptions.insert(
             publisher_id.clone(),
             Subscription {
                 audio_ssrc: publisher.audio_ssrc,
                 audio: RtpRewriter::new(Codec::Opus.clock_rate()),
                 video,
+                screen,
             },
         );
     }
@@ -205,6 +241,9 @@ impl Peer {
         api.remove_media(audio_mid(sub.audio_ssrc));
         if let Some(video) = sub.video {
             api.remove_media(video_mid(video.out_ssrc));
+        }
+        if let Some(screen) = sub.screen {
+            api.remove_media(video_mid(screen.out_ssrc));
         }
     }
 
@@ -286,6 +325,32 @@ impl Peer {
                 .marker(marker)
                 .nackable(true);
                 if let Some(stream) = self.rtc.direct_api().stream_tx(&video.out_ssrc.into()) {
+                    stream.write_rtp(write);
+                }
+            }
+            TrackKind::Screen => {
+                let Some(screen) = sub.screen.as_mut() else {
+                    return;
+                };
+                if Codec::Video(screen.codec) != packet.codec {
+                    return;
+                }
+                let Some(out) = screen.rewriter.rewrite(packet.rewriter_input()) else {
+                    return;
+                };
+                let Some(pt) = self.spec.payload_type_for(packet.codec) else {
+                    return;
+                };
+                let write = RtpWrite::new(
+                    pt.into(),
+                    out.seq.into(),
+                    out.timestamp,
+                    packet.arrival,
+                    packet.payload.clone(),
+                )
+                .marker(packet.marker)
+                .nackable(true);
+                if let Some(stream) = self.rtc.direct_api().stream_tx(&screen.out_ssrc.into()) {
                     stream.write_rtp(write);
                 }
             }

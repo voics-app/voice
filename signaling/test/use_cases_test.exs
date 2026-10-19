@@ -189,6 +189,25 @@ defmodule DiscordyVoice.UseCasesTest do
       assert Conn.session(conn).ssrcs.audio == 111_111
     end
 
+    test "the client's screen share ssrcs become a separate sfu stream", %{deps: deps} do
+      {conn, _} = join(:a, "a", "ch-1", deps, video: true)
+
+      ssrcs = %{
+        "audio" => 111_111,
+        "video" => 222_222,
+        "rtx" => 333_333,
+        "screen" => 444_444,
+        "screen_rtx" => 555_555
+      }
+
+      offer = put_in(Fixtures.select_protocol(video: true), ["data", "ssrcs"], ssrcs)
+      [{:reply, 4, _}] = Conn.send_frame(conn, 1, offer)
+
+      assert [{:create_session, payload}] = FakeSfu.calls()
+      assert [%{ssrc: 222_222}] = payload.video_layers
+      assert payload.screen == %{ssrc: 444_444, rtx_ssrc: 555_555}
+    end
+
     test "invalid client ssrcs fall back to the plan", %{deps: deps} do
       {conn, _} = join(:a, "a", "ch-1", deps)
       planned = Conn.session(conn).ssrcs.audio
@@ -281,6 +300,37 @@ defmodule DiscordyVoice.UseCasesTest do
 
       {_c, [_ready, _connect, {:reply, 12, %{user_id: "a", video_ssrc: ^video_ssrc}}]} =
         join(:c, "c", "ch-1", deps)
+    end
+
+    test "camera and screen share are relayed as separate streams with their own active flag", %{
+      deps: deps
+    } do
+      {a, _} = join(:a, "a", "ch-1", deps, video: true)
+      {_b, _} = join(:b, "b", "ch-1", deps)
+
+      ssrcs = %{"audio" => 11, "video" => 22, "rtx" => 33, "screen" => 44, "screen_rtx" => 55}
+      offer = put_in(Fixtures.select_protocol(video: true), ["data", "ssrcs"], ssrcs)
+      [{:reply, 4, _}] = Conn.send_frame(a, 1, offer)
+      drain_messages()
+
+      streams = [
+        %{"type" => "video", "rid" => "100", "active" => false},
+        %{"type" => "screen", "rid" => "100", "active" => true}
+      ]
+
+      assert [] = Conn.send_frame(a, 12, %{"streams" => streams})
+      assert_receive {:pushed, :b, 12, %{video_ssrc: 0, streams: relayed}}
+
+      assert [
+               %{type: "video", ssrc: 22, active: false},
+               %{type: "screen", ssrc: 44, rtx_ssrc: 55, active: true}
+             ] = relayed
+
+      both = [%{"type" => "video", "rid" => "100", "active" => true} | tl(streams)]
+      assert [] = Conn.send_frame(a, 12, %{"streams" => both})
+
+      assert_receive {:pushed, :b, 12,
+                      %{video_ssrc: 22, streams: [%{active: true}, %{active: true}]}}
     end
 
     test "all layers off sends zero ssrcs; non-video sessions ignore VIDEO", %{deps: deps} do
