@@ -1,0 +1,22 @@
+# secrets
+.env
+.env.*
+!.env.example
+
+# rust
+/sfu/target/
+/regionctl/target/
+**/*.rs.bk
+
+# elixir
+/signaling/_build/
+/signaling/deps/
+/signaling/cover/
+/signaling/*.ez
+/signaling/erl_crash.dump
+
+# editors / os
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db

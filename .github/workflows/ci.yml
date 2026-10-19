@@ -1,0 +1,54 @@
+name: ci
+
+on:
+  push:
+    branches: [main, develop, "release/**", "hotfix/**", "feature/**"]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  signaling:
+    uses: discordy-voics/.github/.github/workflows/elixir.yml@main
+    with:
+      working-directory: signaling
+      image-name: voice-signaling
+      description: Discordy voice signaling
+      sobelow: false
+
+  sfu:
+    uses: discordy-voics/.github/.github/workflows/rust.yml@main
+    with:
+      working-directory: sfu
+      image-name: voice-sfu
+      description: Discordy SFU
+      system-packages: cmake
+
+  regionctl:
+    uses: discordy-voics/.github/.github/workflows/rust.yml@main
+    with:
+      working-directory: regionctl
+      image-name: regionctl
+      description: Discordy region control CLI
+
+  docker:
+    needs: [signaling, sfu]
+    strategy:
+      matrix:
+        component: [signaling, sfu]
+    permissions: {contents: read, packages: write, id-token: write}
+    uses: discordy-voics/.github/.github/workflows/docker.yml@main
+    with:
+      image-name: voice-${{ matrix.component }}
+      description: Discordy voice ${{ matrix.component }}
+      context: ${{ matrix.component }}
+      dockerfile: ${{ matrix.component }}/Dockerfile
+
+  release-please:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [signaling, sfu, regionctl]
+    permissions: {contents: write, pull-requests: write, issues: write}
+    uses: discordy-voics/.github/.github/workflows/release-please.yml@main
