@@ -177,6 +177,26 @@ defmodule DiscordyVoice.UseCasesTest do
       assert Enum.any?(payload.codecs, &(&1.name == "VP9" and &1.rtx_payload_type == 99))
     end
 
+    test "ssrcs from the client's offer replace the plan", %{deps: deps} do
+      {conn, _} = join(:a, "a", "ch-1", deps, video: true)
+      ssrcs = %{"audio" => 111_111, "video" => 222_222, "rtx" => 333_333}
+      offer = put_in(Fixtures.select_protocol(video: true), ["data", "ssrcs"], ssrcs)
+      [{:reply, 4, _}] = Conn.send_frame(conn, 1, offer)
+
+      assert [{:create_session, payload}] = FakeSfu.calls()
+      assert payload.audio_ssrc == 111_111
+      assert [%{ssrc: 222_222, rtx_ssrc: 333_333, quality: 100}] = payload.video_layers
+      assert Conn.session(conn).ssrcs.audio == 111_111
+    end
+
+    test "invalid client ssrcs fall back to the plan", %{deps: deps} do
+      {conn, _} = join(:a, "a", "ch-1", deps)
+      planned = Conn.session(conn).ssrcs.audio
+      offer = put_in(Fixtures.select_protocol(), ["data", "ssrcs"], %{"audio" => 0})
+      [{:reply, 4, _}] = Conn.send_frame(conn, 1, offer)
+      assert [{:create_session, %{audio_ssrc: ^planned}}] = FakeSfu.calls()
+    end
+
     test "a bare colon-hex fingerprint gets a hash prefix", %{deps: deps} do
       {conn, _} = join(:a, "a", "ch-1", deps)
       offer = put_in(Fixtures.select_protocol(), ["data", "fingerprint"], "AB:CD")

@@ -37,11 +37,15 @@ defmodule DiscordyVoice.Application.UseCases.UpdateVideo do
             quality: layer.quality,
             ssrc: layer.ssrc,
             rtx_ssrc: layer.rtx_ssrc,
-            active: MapSet.member?(active, layer.rid)
+            active: active?(plan, active, layer.rid)
           }
         end
     }
   end
+
+  # A client-provided plan has one layer; any stream the client marks active refers to it.
+  defp active?(%{layers: [_single]}, active, _rid), do: MapSet.size(active) > 0
+  defp active?(_plan, active, rid), do: MapSet.member?(active, rid)
 
   defp active_rids(streams) when is_list(streams) do
     for %{"rid" => rid, "active" => true} <- streams, is_binary(rid), into: MapSet.new(), do: rid

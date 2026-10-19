@@ -12,6 +12,7 @@ defmodule DiscordyVoice.Application.UseCases.SelectProtocol do
           {:ok, VoiceSession.t(), [{:reply, non_neg_integer(), term()}]} | {:close, atom()}
   def run(%VoiceSession{phase: :identified} = session, d, %Deps{} = deps) do
     with {:ok, offer} <- parse(d),
+         session = adopt_client_ssrcs(session, offer.ssrcs),
          {:ok, negotiated} <- Codecs.negotiate(offer.codecs, session.video),
          {:ok, local} <- deps.sfu.create_session(sfu_payload(session, offer, negotiated)) do
       session = %{
@@ -34,15 +35,47 @@ defmodule DiscordyVoice.Application.UseCases.SelectProtocol do
 
   defp parse(%{
          "protocol" => "webrtc",
-         "data" => %{"ice_ufrag" => ufrag, "ice_pwd" => pwd, "fingerprint" => fp},
+         "data" => %{"ice_ufrag" => ufrag, "ice_pwd" => pwd, "fingerprint" => fp} = data,
          "codecs" => codecs
        })
        when is_binary(ufrag) and is_binary(pwd) and is_binary(fp) do
     {:ok,
-     %{ice_ufrag: ufrag, ice_pwd: pwd, fingerprint: normalize_fingerprint(fp), codecs: codecs}}
+     %{
+       ice_ufrag: ufrag,
+       ice_pwd: pwd,
+       fingerprint: normalize_fingerprint(fp),
+       codecs: codecs,
+       ssrcs: client_ssrcs(data["ssrcs"])
+     }}
   end
 
   defp parse(_d), do: {:error, :invalid_payload}
+
+  # Browsers choose their own SSRCs and cannot be told to use READY's, so a client may send the
+  # ones from its offer. They replace the plan: one audio SSRC and a single (non-simulcast) layer.
+  defp client_ssrcs(%{"audio" => audio} = ssrcs)
+       when is_integer(audio) and audio in 1..0xFFFFFFFF,
+       do: %{audio: audio, video: valid_ssrc(ssrcs["video"]), rtx: valid_ssrc(ssrcs["rtx"])}
+
+  defp client_ssrcs(_ssrcs), do: nil
+
+  defp valid_ssrc(value) when is_integer(value) and value in 1..0xFFFFFFFF, do: value
+  defp valid_ssrc(_value), do: 0
+
+  defp adopt_client_ssrcs(session, nil), do: session
+
+  defp adopt_client_ssrcs(%VoiceSession{ssrcs: plan} = session, ssrcs) do
+    layers =
+      case {ssrcs.video, plan.layers} do
+        {0, _layers} ->
+          plan.layers
+
+        {video, layers} ->
+          [%{rid: List.last(layers).rid, quality: 100, ssrc: video, rtx_ssrc: ssrcs.rtx}]
+      end
+
+    %{session | ssrcs: %{plan | audio: ssrcs.audio, layers: layers}}
+  end
 
   # Browsers report "sha-256 AB:CD:.."; a bare colon-hex value is accepted too.
   defp normalize_fingerprint(fp) do
