@@ -114,6 +114,12 @@ fn to_spec(session: WireSession) -> Result<SessionSpec, MappingError> {
                 rtx_ssrc: l.rtx_ssrc,
             })
             .collect(),
+        screen: session.screen.map(|s| VideoLayer {
+            rid: "screen".to_owned(),
+            quality: 100,
+            ssrc: s.ssrc,
+            rtx_ssrc: s.rtx_ssrc,
+        }),
     })
 }
 

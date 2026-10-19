@@ -158,6 +158,12 @@ impl PeerFactory {
                 );
             }
         }
+        if let Some(screen) = &spec.screen {
+            let own_screen = video_mid(screen.ssrc);
+            api.declare_media(own_screen, RtcMediaKind::Video);
+            let rtx = (screen.rtx_ssrc != 0).then(|| screen.rtx_ssrc.into());
+            api.expect_stream_rx(screen.ssrc.into(), rtx, own_screen, None);
+        }
 
         let creds = api.local_ice_credentials();
         let fingerprint = api.local_dtls_fingerprint().to_string();

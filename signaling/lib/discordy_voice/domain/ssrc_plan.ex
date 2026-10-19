@@ -2,7 +2,8 @@ defmodule DiscordyVoice.Domain.SsrcPlan do
   @moduledoc """
   The SSRCs of one voice session: one audio SSRC, and for each simulcast layer a media SSRC and
   an RTX SSRC. A plan occupies `size/0` consecutive values from a node-unique base, so plans from
-  distinct bases never overlap.
+  distinct bases never overlap. A screen share is a separate stream (`screen`), only known when the
+  client reports the SSRCs of its offer.
   """
 
   alias DiscordyVoice.Contracts
@@ -10,10 +11,11 @@ defmodule DiscordyVoice.Domain.SsrcPlan do
   @max_ssrc 0xFFFFFFFF
 
   @enforce_keys [:audio, :layers]
-  defstruct [:audio, :layers]
+  defstruct [:audio, :layers, screen: nil]
 
   @type layer :: %{rid: String.t(), quality: 0..100, ssrc: pos_integer(), rtx_ssrc: pos_integer()}
-  @type t :: %__MODULE__{audio: pos_integer(), layers: [layer()]}
+  @type stream :: %{ssrc: pos_integer(), rtx_ssrc: non_neg_integer()}
+  @type t :: %__MODULE__{audio: pos_integer(), layers: [layer()], screen: stream() | nil}
 
   @doc "Number of SSRCs a plan consumes."
   @spec size() :: pos_integer()

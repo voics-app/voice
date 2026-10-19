@@ -69,6 +69,19 @@ pub struct WireSession {
     /// Simulcast layers, ascending quality.
     #[serde(default)]
     pub video_layers: Vec<WireLayer>,
+    /// The screen share stream, when the client sends one beside the camera.
+    #[serde(default)]
+    pub screen: Option<WireStream>,
+}
+
+/// A single-layer stream (the screen share).
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+pub struct WireStream {
+    /// Media SSRC.
+    pub ssrc: u32,
+    /// Retransmission SSRC, 0 when none.
+    #[serde(default)]
+    pub rtx_ssrc: u32,
 }
 
 /// A negotiated codec.

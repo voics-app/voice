@@ -94,6 +94,9 @@ pub struct SessionSpec {
     pub audio_ssrc: u32,
     /// Video layers, ascending quality. Empty when the client does not send video.
     pub video_layers: Vec<VideoLayer>,
+    /// The publisher's screen share: a separate single-layer stream beside the camera, forwarded
+    /// to subscribers under its own SSRC.
+    pub screen: Option<VideoLayer>,
 }
 
 /// Why a session spec was rejected.
@@ -133,7 +136,8 @@ impl SessionSpec {
         if self.audio_codec().is_none() {
             return Err(SessionSpecError::MissingOpus);
         }
-        if !self.video_layers.is_empty() && self.video_codec().is_none() {
+        if (!self.video_layers.is_empty() || self.screen.is_some()) && self.video_codec().is_none()
+        {
             return Err(SessionSpecError::MissingVideoCodec);
         }
         let mut pts = HashSet::new();
@@ -194,6 +198,11 @@ impl SessionSpec {
         self.video_layers.first()
     }
 
+    /// Whether `ssrc` is this publisher's screen share.
+    pub fn is_screen(&self, ssrc: u32) -> bool {
+        self.screen.as_ref().is_some_and(|s| s.ssrc == ssrc)
+    }
+
     /// Layer index of an inbound video SSRC.
     pub fn layer_index(&self, ssrc: u32) -> Option<usize> {
         self.video_layers.iter().position(|l| l.ssrc == ssrc)
@@ -202,6 +211,13 @@ impl SessionSpec {
     fn all_ssrcs(&self) -> impl Iterator<Item = u32> + '_ {
         std::iter::once(self.audio_ssrc)
             .chain(self.video_layers.iter().flat_map(|l| [l.ssrc, l.rtx_ssrc]))
+            .chain(self.screen.iter().map(|s| s.ssrc))
+            .chain(
+                self.screen
+                    .iter()
+                    .map(|s| s.rtx_ssrc)
+                    .filter(|&rtx| rtx != 0),
+            )
     }
 }
 
@@ -274,6 +290,7 @@ pub(crate) mod fixtures {
                     rtx_ssrc: audio_ssrc + 4,
                 },
             ],
+            screen: None,
         }
     }
 }

@@ -52,10 +52,17 @@ defmodule DiscordyVoice.Application.UseCases.SelectProtocol do
   defp parse(_d), do: {:error, :invalid_payload}
 
   # Browsers choose their own SSRCs and cannot be told to use READY's, so a client may send the
-  # ones from its offer. They replace the plan: one audio SSRC and a single (non-simulcast) layer.
+  # ones from its offer. They replace the plan: one audio SSRC, a single (non-simulcast) camera
+  # layer and, separately, the screen share stream.
   defp client_ssrcs(%{"audio" => audio} = ssrcs)
        when is_integer(audio) and audio in 1..0xFFFFFFFF,
-       do: %{audio: audio, video: valid_ssrc(ssrcs["video"]), rtx: valid_ssrc(ssrcs["rtx"])}
+       do: %{
+         audio: audio,
+         video: valid_ssrc(ssrcs["video"]),
+         rtx: valid_ssrc(ssrcs["rtx"]),
+         screen: valid_ssrc(ssrcs["screen"]),
+         screen_rtx: valid_ssrc(ssrcs["screen_rtx"])
+       }
 
   defp client_ssrcs(_ssrcs), do: nil
 
@@ -74,7 +81,9 @@ defmodule DiscordyVoice.Application.UseCases.SelectProtocol do
           [%{rid: List.last(layers).rid, quality: 100, ssrc: video, rtx_ssrc: ssrcs.rtx}]
       end
 
-    %{session | ssrcs: %{plan | audio: ssrcs.audio, layers: layers}}
+    screen = if ssrcs.screen > 0, do: %{ssrc: ssrcs.screen, rtx_ssrc: ssrcs.screen_rtx}
+
+    %{session | ssrcs: %{plan | audio: ssrcs.audio, layers: layers, screen: screen}}
   end
 
   # Browsers report "sha-256 AB:CD:.."; a bare colon-hex value is accepted too.
@@ -105,7 +114,8 @@ defmodule DiscordyVoice.Application.UseCases.SelectProtocol do
       remote_fingerprint: offer.fingerprint,
       audio_ssrc: session.ssrcs.audio,
       codecs: Enum.map(negotiated.codecs, &wire_codec/1),
-      video_layers: layers
+      video_layers: layers,
+      screen: if(negotiated.video_codec, do: session.ssrcs.screen)
     }
   end
 
