@@ -1,0 +1,9 @@
+# Local gate: runs before every push so CI (GitHub-hosted minutes are budgeted) only repeats the cheap checks.
+# Install once: `make hooks` (needs lefthook: https://github.com/evilmartians/lefthook). Skip once with LEFTHOOK=0 git push.
+pre-push:
+  parallel: false
+  commands:
+    lint:
+      run: make lint
+    unit-tests:
+      run: cd sfu && cargo test --lib --bins && cd ../regionctl && cargo test --lib --bins && cd ../signaling && MIX_ENV=test mix test

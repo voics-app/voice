@@ -34,3 +34,8 @@ build:
 docker:
 	docker build --build-arg REVISION=$(REVISION) -t ghcr.io/discordy-voics/voice-sfu:dev $(SFU_DIR)
 	docker build --build-arg REVISION=$(REVISION) -t ghcr.io/discordy-voics/voice-signaling:dev $(SIGNALING_DIR)
+
+# Install the pre-push hook (lint + unit tests, see lefthook.yml).
+.PHONY: hooks
+hooks:
+	lefthook install

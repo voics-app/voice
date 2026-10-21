@@ -101,3 +101,7 @@ regionctl undrain eu-west-1
 - **Cloudflare**: `regionctl add` needs a real `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ZONE_ID`. It was verified against a mock of the Cloudflare API only. A region reached through the Cloudflare tunnel also needs its tunnel ingress rule (see the voice-regions runbook).
 - **UDP 50000** must be reachable at each region's public IP (router forward for `nl-home`).
 - **Gateway integration** (`VOICE_TOKEN_SECRET`, etcd drain marker) was verified against the pinned interfaces, not against a running gateway.
+
+## Git hooks
+
+Tests run locally, not in CI. Install [lefthook](https://github.com/evilmartians/lefthook) once and run `make hooks` (or `lefthook install`) to enable the pre-push hook in `lefthook.yml`: it runs this repository's lint and unit tests before every push. CI repeats only the slim gate on pull requests. Skip once with `LEFTHOOK=0 git push`.
