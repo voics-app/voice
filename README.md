@@ -52,6 +52,7 @@ Names follow pinned interface P2. Configuration is read from the environment and
 | `VOICE_NODE_ID` | yes | | Unique node id; must equal the `node` claim of voice tokens |
 | `VOICE_PUBLIC_WS_URL` | yes | | `wss://` URL clients use for the voice WebSocket |
 | `VOICE_PUBLIC_IP` | yes | | IP advertised in READY and SESSION_DESCRIPTION candidates |
+| `VOICE_LAN_IP` | no | | Node LAN IP added as a first ICE host candidate so clients behind the same NAT (router without hairpin) connect directly; set from `status.hostIP` in Kubernetes |
 | `VOICE_UDP_PORT` | no | `50000` | Media port advertised to clients |
 | `ETCD_ENDPOINTS` | yes | | Comma-separated `host:port` (a leading `http://` is accepted) |
 | `VOICE_TOKEN_SECRET` | yes | | HS256 secret shared with the gateway, at least 16 bytes |

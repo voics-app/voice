@@ -55,6 +55,12 @@ defmodule DiscordyVoice.Infrastructure.NodePresence do
   def handle_info(:tick, state), do: {:noreply, tick(state)}
   def handle_info({:EXIT, _from, reason}, state), do: {:stop, reason, state}
 
+  # Late replies of timed-out etcd calls and other strays must never crash the presence process.
+  def handle_info(message, state) do
+    Logger.debug("node presence ignored message: #{inspect(message, limit: 5)}")
+    {:noreply, state}
+  end
+
   @impl true
   def terminate(_reason, %{lease: lease, registry: registry, key: key}) when lease != nil do
     registry.delete(key)
@@ -70,7 +76,7 @@ defmodule DiscordyVoice.Infrastructure.NodePresence do
   end
 
   defp sync_drain_marker(state) do
-    case state.registry.exists?(Contracts.drain_key(state.settings.node_id)) do
+    case safe(fn -> state.registry.exists?(Contracts.drain_key(state.settings.node_id)) end) do
       {:ok, true} ->
         DrainControl.drain()
         %{state | drained_by_marker: true}
@@ -86,7 +92,7 @@ defmodule DiscordyVoice.Infrastructure.NodePresence do
 
   defp register(state) do
     with {:ok, lease} <- ensure_lease(state),
-         :ok <- state.registry.put(state.key, status_json(state.settings), lease) do
+         :ok <- safe(fn -> state.registry.put(state.key, status_json(state.settings), lease) end) do
       %{state | lease: lease}
     else
       {:error, reason} ->
@@ -96,13 +102,21 @@ defmodule DiscordyVoice.Infrastructure.NodePresence do
   end
 
   defp ensure_lease(%{lease: nil, registry: registry}),
-    do: registry.grant(Contracts.lease_ttl_s())
+    do: safe(fn -> registry.grant(Contracts.lease_ttl_s()) end)
 
   defp ensure_lease(%{lease: lease, registry: registry}) do
-    case registry.keep_alive(lease) do
+    case safe(fn -> registry.keep_alive(lease) end) do
       :ok -> {:ok, lease}
-      {:error, _reason} -> registry.grant(Contracts.lease_ttl_s())
+      {:error, _reason} -> safe(fn -> registry.grant(Contracts.lease_ttl_s()) end)
     end
+  end
+
+  # eetcd exits (GenServer call timeout) when a request times out on a slow cluster; turn that into
+  # an error so the presence process survives and retries on the next tick.
+  defp safe(fun) do
+    fun.()
+  catch
+    kind, reason -> {:error, {kind, reason}}
   end
 
   defp status_json(settings) do
