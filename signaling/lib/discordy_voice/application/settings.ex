@@ -31,6 +31,7 @@ defmodule DiscordyVoice.Application.Settings do
     :internal_token,
     :sfu_control,
     :http_port,
+    lan_ip: nil,
     sfu_executable: nil,
     drain_on_start: false,
     log_level: :info,
@@ -49,6 +50,7 @@ defmodule DiscordyVoice.Application.Settings do
           internal_token: String.t(),
           sfu_control: {String.t(), 1..65_535},
           http_port: 0..65_535,
+          lan_ip: String.t() | nil,
           sfu_executable: String.t() | nil,
           drain_on_start: boolean(),
           log_level: Logger.level(),
@@ -66,6 +68,7 @@ defmodule DiscordyVoice.Application.Settings do
       {:node_id, required(vars, "VOICE_NODE_ID")},
       {:public_ws_url, ws_url(vars)},
       {:public_ip, ip(vars)},
+      {:lan_ip, optional_ip(vars, "VOICE_LAN_IP")},
       {:udp_port, port(vars, "VOICE_UDP_PORT", "50000")},
       {:etcd_endpoints, endpoints(vars)},
       {:token_secret, secret(vars, "VOICE_TOKEN_SECRET")},
@@ -136,6 +139,26 @@ defmodule DiscordyVoice.Application.Settings do
       end
     end
   end
+
+  # Optional extra ICE host candidate: the node's LAN address, for clients behind the same NAT
+  # (a router rarely hairpins UDP to its own public IP).
+  defp optional_ip(vars, name) do
+    case vars[name] do
+      value when value in [nil, ""] ->
+        {:ok, nil}
+
+      value ->
+        case :inet.parse_address(String.to_charlist(value)) do
+          {:ok, _} -> {:ok, value}
+          {:error, _} -> {:error, "#{name} must be an IP address"}
+        end
+    end
+  end
+
+  @doc "Distinct ICE host candidate IPs the SFU is reachable on: LAN first, then public."
+  @spec candidate_ips(t()) :: [String.t()]
+  def candidate_ips(%__MODULE__{lan_ip: lan, public_ip: public}),
+    do: Enum.uniq(Enum.reject([lan, public], &is_nil/1))
 
   defp port(vars, name, default) do
     value = non_blank(vars[name], default)

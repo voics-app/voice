@@ -53,9 +53,3 @@ jobs:
       description: Discordy voice ${{ matrix.component }}
       context: ${{ matrix.component }}
       dockerfile: ${{ matrix.component }}/Dockerfile
-
-  release-please:
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    needs: [signaling, sfu, regionctl]
-    permissions: {contents: write, pull-requests: write, issues: write}
-    uses: discordy-voics/.github/.github/workflows/release-please.yml@main
