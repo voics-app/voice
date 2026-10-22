@@ -137,7 +137,11 @@ defmodule DiscordyVoice.Application.UseCases.SelectProtocol do
       ice_ufrag: local.local_ufrag,
       ice_pwd: local.local_pwd,
       fingerprint: local.fingerprint,
-      candidates: [%{ip: deps.settings.public_ip, port: deps.settings.udp_port, protocol: "udp"}],
+      candidates:
+        Enum.map(
+          DiscordyVoice.Application.Settings.candidate_ips(deps.settings),
+          &%{ip: &1, port: deps.settings.udp_port, protocol: "udp"}
+        ),
       audio_codec: session.audio_codec,
       video_codec: session.video_codec,
       e2ee:
