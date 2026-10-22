@@ -2,7 +2,7 @@ defmodule DiscordyVoice.LanCandidateAndResilienceTest do
   use ExUnit.Case, async: false
 
   alias DiscordyVoice.Application.Settings
-  alias DiscordyVoice.{Fixtures, FakeNodeRegistry}
+  alias DiscordyVoice.{FakeNodeRegistry, Fixtures}
   alias DiscordyVoice.Infrastructure.NodePresence
   alias DiscordyVoice.Interface.ErrorJSON
 

@@ -4,7 +4,7 @@ defmodule DiscordyVoice.Application.UseCases.SelectProtocol do
   answers SESSION_DESCRIPTION, from which the client synthesizes its remote SDP.
   """
 
-  alias DiscordyVoice.Application.Deps
+  alias DiscordyVoice.Application.{Deps, Settings}
   alias DiscordyVoice.Contracts
   alias DiscordyVoice.Domain.{Codecs, VoiceSession}
 
@@ -139,7 +139,7 @@ defmodule DiscordyVoice.Application.UseCases.SelectProtocol do
       fingerprint: local.fingerprint,
       candidates:
         Enum.map(
-          DiscordyVoice.Application.Settings.candidate_ips(deps.settings),
+          Settings.candidate_ips(deps.settings),
           &%{ip: &1, port: deps.settings.udp_port, protocol: "udp"}
         ),
       audio_codec: session.audio_codec,
