@@ -1,4 +1,4 @@
-# syntax=docker/dockerfile:1
+# syntax=docker/dockerfile:1.7
 # Discordy voice signaling (Elixir release). Build context: the signaling/ directory.
 
 FROM hexpm/elixir:1.20.4-erlang-29.1.2-alpine-3.24.2 AS build
@@ -8,7 +8,8 @@ WORKDIR /app
 RUN mix local.hex --force && mix local.rebar --force
 COPY mix.exs mix.lock ./
 COPY config config
-RUN mix deps.get --only prod && mix deps.compile
+RUN --mount=type=cache,target=/root/.hex/packages \
+    mix deps.get --only prod && mix deps.compile
 COPY lib lib
 RUN mix release --path /out
 
