@@ -6,6 +6,7 @@ defmodule DiscordyVoice.Infrastructure.Rooms do
   alias DiscordyVoice.Infrastructure.Room
 
   @attempts 3
+  @retry_pause_ms 5
 
   @impl true
   def join(channel_id, member), do: join(channel_id, member, @attempts)
@@ -18,7 +19,9 @@ defmodule DiscordyVoice.Infrastructure.Rooms do
     end
   catch
     # The room stopped between lookup and call (its last member left): start a fresh one.
-    :exit, _reason -> join(channel_id, member, attempts - 1)
+    :exit, _reason ->
+      Process.sleep(@retry_pause_ms)
+      join(channel_id, member, attempts - 1)
   end
 
   @impl true
@@ -46,9 +49,11 @@ defmodule DiscordyVoice.Infrastructure.Rooms do
     :ok
   end
 
+  # The registry drops the entry of a dead process asynchronously, so `lookup/2` can still return
+  # the pid of a room that has just stopped: only a live process counts as the channel's room.
   defp lookup(channel_id) do
     case Registry.lookup(DiscordyVoice.RoomRegistry, channel_id) do
-      [{pid, _}] -> {:ok, pid}
+      [{pid, _}] -> if Process.alive?(pid), do: {:ok, pid}, else: :error
       [] -> :error
     end
   end
