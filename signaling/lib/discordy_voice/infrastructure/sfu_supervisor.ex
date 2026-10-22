@@ -41,7 +41,15 @@ defmodule DiscordyVoice.Infrastructure.SfuSupervisor do
   def handle_call(:os_pid, _from, %{port: nil} = state), do: {:reply, nil, state}
 
   def handle_call(:os_pid, _from, %{port: port} = state) do
-    {:reply, port |> Port.info(:os_pid) |> elem(1), state}
+    # The port closes as soon as the process exits, slightly before its exit_status message is
+    # handled: `Port.info/2` is `nil` in that window.
+    os_pid =
+      case Port.info(port, :os_pid) do
+        {:os_pid, os_pid} -> os_pid
+        nil -> nil
+      end
+
+    {:reply, os_pid, state}
   end
 
   @impl true

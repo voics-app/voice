@@ -8,18 +8,20 @@ defmodule DiscordyVoice.SfuSupervisorTest do
   @tag skip: is_nil(@sh) && "no sh on this machine"
   test "restarts the sfu process when it exits" do
     start_supervised!({SfuSupervisor, executable: @sh, args: ["-c", "sleep 0.2; exit 3"]})
-    first = SfuSupervisor.os_pid()
-    assert is_integer(first)
-
-    second = wait_for_new_pid(first)
+    first = wait_for_pid(&is_integer/1)
+    second = wait_for_pid(&(is_integer(&1) and &1 != first))
     assert second != first
   end
 
-  defp wait_for_new_pid(old, attempts \\ 100) do
-    case SfuSupervisor.os_pid() do
-      pid when is_integer(pid) and pid != old -> pid
-      _ when attempts == 0 -> flunk("sfu was not restarted")
-      _ -> Process.sleep(50) && wait_for_new_pid(old, attempts - 1)
+  # The port is closed (os_pid nil) between the process exiting and the restart: poll until the
+  # predicate holds instead of assuming a timing.
+  defp wait_for_pid(predicate, attempts \\ 200) do
+    pid = SfuSupervisor.os_pid()
+
+    cond do
+      predicate.(pid) -> pid
+      attempts == 0 -> flunk("sfu os pid never satisfied the condition, last: #{inspect(pid)}")
+      true -> Process.sleep(25) && wait_for_pid(predicate, attempts - 1)
     end
   end
 end
