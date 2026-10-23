@@ -160,6 +160,8 @@ defmodule DiscordyVoice.DomainTest do
 
       assert Base.url_decode64!(c, padding: false) == "discordy-voice:room"
       assert Base.url_decode64!(k, padding: false) == <<1, 2, 3>>
+      assert %{"founder" => false} = Dave.external_sender("room", <<1>>)
+      assert %{"founder" => true} = Dave.external_sender("room", <<1>>, true)
     end
   end
 

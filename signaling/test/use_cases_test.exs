@@ -230,6 +230,7 @@ defmodule DiscordyVoice.UseCasesTest do
         join(:a, "a", "ch-e", deps, claims: %{"e2ee" => true})
 
       assert sender["protocol_version"] == 1
+      assert sender["founder"] == true
 
       [{:reply, 4, desc}] = Conn.send_frame(conn, 1, Fixtures.select_protocol())
       assert desc.e2ee == %{protocol_version: 1}
