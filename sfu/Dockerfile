@@ -1,10 +1,16 @@
 # syntax=docker/dockerfile:1.7
 # Discordy SFU (Rust, str0m). Build context: the sfu/ directory.
 
-FROM rust:1.99-slim-bookworm AS chef
+# Prebuilt, checksum-pinned cargo-chef (upstream release binary) instead of compiling it from source on every
+# cold build; unpacked in alpine because the slim rust image has no xz.
+FROM alpine:3.22 AS chef-bin
 ARG CHEF_VERSION=0.1.78
+ADD --checksum=sha256:70ef940ef90d04d122f0176fdb8d6c39069191b484a1eaa29b327370c2e1c3c0 https://github.com/LukeMathWalker/cargo-chef/releases/download/v${CHEF_VERSION}/cargo-chef-x86_64-unknown-linux-gnu.tar.xz /tmp/cargo-chef.tar.xz
+RUN tar -xJf /tmp/cargo-chef.tar.xz -C /tmp && mv /tmp/cargo-chef-*/cargo-chef /cargo-chef
+
+FROM rust:1.99-slim-bookworm AS chef
 RUN apt-get update  && apt-get install -y --no-install-recommends build-essential cmake  && rm -rf /var/lib/apt/lists/*
-RUN --mount=type=cache,target=/usr/local/cargo/registry     cargo install cargo-chef --locked --version "${CHEF_VERSION}"
+COPY --from=chef-bin /cargo-chef /usr/local/cargo/bin/cargo-chef
 WORKDIR /src
 
 # cargo-chef builds the dependency layer once, from a recipe of the manifests only (also reused through the
