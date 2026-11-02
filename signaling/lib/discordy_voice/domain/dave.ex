@@ -80,10 +80,12 @@ defmodule DiscordyVoice.Domain.Dave do
   end
 
   @doc "The MLS external sender announcement (op 25) a new member receives when E2EE is on."
-  @spec external_sender(String.t(), binary()) :: map()
-  def external_sender(room_id, public_key) do
+  @spec external_sender(String.t(), binary(), boolean()) :: map()
+  def external_sender(room_id, public_key, founder \\ false) do
     %{
       "protocol_version" => Contracts.dave_protocol_version(),
+      # The first member of the room founds the MLS group; the room serialises joins, so exactly one does.
+      "founder" => founder,
       "external_sender" => %{
         "credential" => Base.url_encode64("discordy-voice:" <> room_id, padding: false),
         "signature_key" => Base.url_encode64(public_key, padding: false)

@@ -116,7 +116,7 @@ defmodule DiscordyVoice.Application.UseCases.Identify do
       if session.e2ee do
         [
           {:reply, Contracts.op(:dave_mls_external_sender),
-           Dave.external_sender(session.channel_id, external_sender)}
+           Dave.external_sender(session.channel_id, external_sender, existing == [])}
         ]
       else
         []
