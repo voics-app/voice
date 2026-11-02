@@ -18,7 +18,14 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  gitflow:
+    if: github.event_name == 'pull_request'
+    uses: discordy-voics/.github/.github/workflows/gitflow-guard.yml@main
+
   signaling:
+    permissions:
+      contents: read
+      actions: read   # shared workflow: tag builds look up the main run of this commit
     uses: discordy-voics/.github/.github/workflows/elixir.yml@main
     with:
       working-directory: signaling
@@ -27,6 +34,9 @@ jobs:
       sobelow: false
 
   sfu:
+    permissions:
+      contents: read
+      actions: read   # shared workflow: tag builds look up the main run of this commit
     uses: discordy-voics/.github/.github/workflows/rust.yml@main
     with:
       working-directory: sfu
@@ -35,6 +45,9 @@ jobs:
       system-packages: cmake
 
   regionctl:
+    permissions:
+      contents: read
+      actions: read   # shared workflow: tag builds look up the main run of this commit
     uses: discordy-voics/.github/.github/workflows/rust.yml@main
     with:
       working-directory: regionctl
