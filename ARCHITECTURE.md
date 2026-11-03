@@ -24,7 +24,7 @@ C4Component
   }
 
   Container_Boundary(sfu, "voice-sfu (Rust)") {
-    Component(control, "sfu-control", "NDJSON over TCP 4101", "create_session, close_session, set_sink_wants, sync; speaking and stats events")
+    Component(control, "sfu-control", "NDJSON over TCP 4101", "create_session, close_session, set_sink_wants, sync; speaking, stream_viewers and stats events")
     Component(app, "sfu-core application", "Use cases and ports", "Session lifecycle independent of str0m")
     Component(domain, "sfu-core domain", "Pure rules", "Room registry, RTP rewriter, layer selection, SVC filter, speaking detector, bitrate allocation")
     Component(engine, "Engine and Router", "tokio + str0m", "One UDP socket, demux by ICE ufrag and source address, one Rtc per session, ICE-lite, DTLS-SRTP")
@@ -71,6 +71,7 @@ Both services follow Clean Architecture; dependencies point inwards.
 
 - **Audio**: Opus is forwarded as is; 1-byte DTX comfort frames are dropped and absorbed by the rewriter. The audio-level header extension drives speaking detection (published to signaling as `speaking` events and relayed as SPEAKING).
 - **Video**: each viewer picks quality per publisher through MEDIA_SINK_WANTS; the SFU combines it with a bandwidth estimate (TWCC and REMB) to select a simulcast layer, switching only on keyframes. VP9 sent as one SSRC with spatial layers (SVC) is filtered by layer instead. NACK, PLI and FIR are terminated or forwarded to the publisher with throttling.
+- **Screen share**: opt-in. A subscriber receives a publisher's screen stream only after MEDIA_SINK_WANTS lists its screen SSRC (from the VIDEO payload, `type: "screen"`) with a quality above 0; without it the packets are skipped and no bandwidth is used. The SFU tracks the opted-in users per screen share and sends a `stream_viewers` event when the set changes; signaling relays it to the streamer only, as op 40 `STREAM_VIEWERS` `{ssrc, user_ids}` (the complete viewer list, so an empty list means nobody watches).
 - **E2EE (DAVE)**: when the token says `e2ee`, signaling announces an MLS external sender (op 25) and relays key packages, proposals, commits (announced as op 29), welcomes (op 30) and transition messages between members. Payloads are opaque to the server; it never holds group key material. Clients that join late receive a welcome from the member that commits. The server does not itself issue removal proposals (that needs an MLS implementation); remaining members' clients do.
 
 ## Failure handling

@@ -7,10 +7,14 @@ ENV MIX_ENV=prod
 WORKDIR /app
 RUN mix local.hex --force && mix local.rebar --force
 COPY mix.exs mix.lock ./
-COPY config config
 RUN --mount=type=cache,target=/root/.hex/packages \
-    mix deps.get --only prod && mix deps.compile
+    mix deps.get --only prod
+# Dependencies compile against the compile-time config only; runtime.exs is read at boot, so changing it must
+# not recompile (or re-fetch) every dependency.
+COPY config/config.exs config/prod.exs config/
+RUN mix deps.compile
 COPY lib lib
+COPY config/runtime.exs config/
 RUN mix release --path /out
 
 FROM alpine:3.24.2

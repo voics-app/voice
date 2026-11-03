@@ -8,8 +8,8 @@ defmodule DiscordyVoice.Infrastructure.SfuClient do
   original ICE credentials: state is rebuilt without clients rejoining.
 
   Unsolicited events are dispatched to the owning connection process through
-  `DiscordyVoice.SessionRegistry`: `{:sfu, {:speaking, ssrc, speaking?}}` and
-  `{:sfu, {:closed, reason}}`.
+  `DiscordyVoice.SessionRegistry`: `{:sfu, {:speaking, ssrc, speaking?}}`,
+  `{:sfu, {:stream_viewers, screen_ssrc, user_ids}}` and `{:sfu, {:closed, reason}}`.
   """
 
   use GenServer
@@ -194,6 +194,15 @@ defmodule DiscordyVoice.Infrastructure.SfuClient do
          state
        ) do
     notify(id, {:speaking, ssrc, speaking})
+    state
+  end
+
+  defp handle_message(
+         %{"evt" => "stream_viewers", "session_id" => id, "ssrc" => ssrc, "viewers" => viewers},
+         state
+       )
+       when is_list(viewers) do
+    notify(id, {:stream_viewers, ssrc, viewers})
     state
   end
 

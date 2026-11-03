@@ -187,6 +187,15 @@ pub fn broadcast_for(event: SfuEvent) -> Option<WireEvent> {
             ssrc,
             speaking,
         }),
+        SfuEvent::StreamViewers {
+            session_id,
+            ssrc,
+            viewers,
+        } => Some(WireEvent::StreamViewers {
+            session_id: session_id.0,
+            ssrc,
+            viewers: viewers.into_iter().map(|user| user.0).collect(),
+        }),
         SfuEvent::Stats(stats) => Some(WireEvent::Stats {
             sessions: stats.sessions,
             rooms: stats.rooms,
@@ -278,6 +287,20 @@ mod tests {
         assert_eq!(
             json,
             r#"{"evt":"speaking","session_id":"s","ssrc":9,"speaking":true}"#
+        );
+    }
+
+    #[test]
+    fn stream_viewers_serialize_user_ids() {
+        let wire = broadcast_for(SfuEvent::StreamViewers {
+            session_id: "s".into(),
+            ssrc: 9,
+            viewers: vec!["u1".into(), "u2".into()],
+        })
+        .unwrap();
+        assert_eq!(
+            serde_json::to_string(&wire).unwrap(),
+            r#"{"evt":"stream_viewers","session_id":"s","ssrc":9,"viewers":["u1","u2"]}"#
         );
     }
 }
