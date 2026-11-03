@@ -63,6 +63,14 @@ defmodule DiscordyVoice.Interface.VoiceSocket do
     {:ok, state}
   end
 
+  def handle_info(
+        {:sfu, {:stream_viewers, ssrc, user_ids}},
+        %{session: %{ssrcs: %{screen: %{ssrc: ssrc}}}} = state
+      ) do
+    d = %{ssrc: ssrc, user_ids: user_ids}
+    {:push, {:text, Frame.encode(Contracts.op(:stream_viewers), d)}, state}
+  end
+
   def handle_info(_other, state), do: {:ok, state}
 
   @impl true

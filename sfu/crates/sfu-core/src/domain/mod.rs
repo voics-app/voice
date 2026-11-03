@@ -11,5 +11,6 @@ pub mod rtp_rewriter;
 pub mod session;
 pub mod sink_wants;
 pub mod speaking;
+pub mod stream_viewers;
 pub mod svc_filter;
 pub mod vp9_descriptor;

@@ -1,6 +1,6 @@
 //! Events the SFU reports to signaling.
 
-use crate::domain::session::{IceCredentials, SessionId};
+use crate::domain::session::{IceCredentials, SessionId, UserId};
 
 /// Why a session ended.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -64,6 +64,15 @@ pub enum SfuEvent {
         ssrc: u32,
         /// New state.
         speaking: bool,
+    },
+    /// The users watching a publisher's screen share changed.
+    StreamViewers {
+        /// Publisher session.
+        session_id: SessionId,
+        /// Its screen SSRC.
+        ssrc: u32,
+        /// Every user now watching, sorted.
+        viewers: Vec<UserId>,
     },
     /// Periodic statistics.
     Stats(NodeStats),

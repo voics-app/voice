@@ -335,6 +335,10 @@ impl Peer {
                 if Codec::Video(screen.codec) != packet.codec {
                     return;
                 }
+                if !self.sink_wants.watches(screen.out_ssrc) {
+                    screen.rewriter.skip(packet.rewriter_input());
+                    return;
+                }
                 let Some(out) = screen.rewriter.rewrite(packet.rewriter_input()) else {
                     return;
                 };

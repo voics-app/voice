@@ -6,9 +6,11 @@ use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::time::{Duration, Instant};
 
 use common::Client;
+use sfu_core::application::events::SfuEvent;
 use sfu_core::application::service::{Command, Outcome};
 use sfu_core::domain::session::VideoLayer;
 use sfu_core::infrastructure::engine::{self, EngineConfig, EngineHandle};
+use tokio::sync::broadcast::Receiver;
 
 const ALICE_AUDIO: u32 = 3_111;
 const ALICE_CAMERA: u32 = 3_222;
@@ -47,9 +49,10 @@ async fn create(
     }
 }
 
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn screen_share_is_forwarded_as_its_own_stream() {
+/// Runs Alice's screen share towards Bob; Bob opts in to watching it when `watch` is set.
+async fn share_screen(watch: bool) -> (Client, EngineHandle, Receiver<SfuEvent>) {
     let handle = start_engine().await;
+    let events = handle.subscribe();
     let sfu_addr = handle.local_addr();
 
     let camera = VideoLayer {
@@ -79,8 +82,18 @@ async fn screen_share_is_forwarded_as_its_own_stream() {
         ],
     );
 
+    if watch {
+        handle
+            .execute(Command::SetSinkWants {
+                session_id: "bob".into(),
+                wants: vec![(ALICE_SCREEN, 100)],
+            })
+            .await
+            .expect("bob opts in to the screen share");
+    }
+
     let bob = tokio::task::spawn_blocking(move || {
-        let deadline = Instant::now() + Duration::from_secs(20);
+        let deadline = Instant::now() + Duration::from_secs(if watch { 20 } else { 4 });
         let mut sent = 0usize;
         let mut next_send: Option<Instant> = None;
         while Instant::now() < deadline {
@@ -105,6 +118,12 @@ async fn screen_share_is_forwarded_as_its_own_stream() {
     })
     .await
     .expect("client thread");
+    (bob, handle, events)
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn watched_screen_share_is_forwarded_as_its_own_stream() {
+    let (bob, _handle, mut events) = share_screen(true).await;
 
     // Every screen frame arrives under Alice's screen SSRC, contiguous, and none leaks onto the
     // camera stream.
@@ -118,4 +137,29 @@ async fn screen_share_is_forwarded_as_its_own_stream() {
     );
     assert!(screen.iter().all(|p| p.payload[..4] == VP8_KEYFRAME));
     assert!(bob.received_from(ALICE_CAMERA).is_empty());
+
+    let mut reported = None;
+    while let Ok(event) = events.try_recv() {
+        if let SfuEvent::StreamViewers {
+            session_id,
+            ssrc,
+            viewers,
+        } = event
+        {
+            assert_eq!(session_id.0, "alice");
+            assert_eq!(ssrc, ALICE_SCREEN);
+            reported = Some(viewers);
+        }
+    }
+    assert_eq!(reported, Some(vec!["user-bob".into()]));
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn unwatched_screen_share_is_not_forwarded() {
+    let (bob, _handle, mut events) = share_screen(false).await;
+
+    assert!(bob.received_from(ALICE_SCREEN).is_empty());
+    while let Ok(event) = events.try_recv() {
+        assert!(!matches!(event, SfuEvent::StreamViewers { .. }));
+    }
 }

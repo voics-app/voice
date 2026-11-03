@@ -15,8 +15,9 @@ use super::peer_factory::{INITIAL_BWE_KBPS, PeerFactory, ssrc_of_video_mid};
 use crate::application::ports::{LocalDescription, MediaRouter, RouterError};
 use crate::domain::layer_allocation::{LayerOffer, TrackDemand, allocate_layers};
 use crate::domain::opus;
-use crate::domain::session::{SessionId, SessionSpec};
+use crate::domain::session::{SessionId, SessionSpec, UserId};
 use crate::domain::sink_wants::SinkWants;
+use crate::domain::stream_viewers::StreamViewers;
 
 /// Share of the downlink estimate given to video (the rest is headroom for audio/RTCP).
 const VIDEO_BUDGET_PERCENT: u64 = 85;
@@ -41,6 +42,15 @@ pub enum RouterNotification {
         /// New state.
         speaking: bool,
     },
+    /// The users watching a publisher's screen share changed.
+    StreamViewers {
+        /// Publisher.
+        session_id: SessionId,
+        /// Its screen SSRC.
+        ssrc: u32,
+        /// Every user now watching, sorted.
+        viewers: Vec<UserId>,
+    },
     /// The transport of a session died.
     TransportClosed(SessionId),
 }
@@ -53,6 +63,7 @@ pub struct Str0mRouter {
     peers: HashMap<SessionId, Peer>,
     demux: super::demux::Demux,
     video_publishers: HashMap<u32, SessionId>,
+    viewers: StreamViewers,
     notifications: Vec<RouterNotification>,
     last_reallocation: Instant,
     last_housekeeping: Instant,
@@ -67,6 +78,7 @@ impl Str0mRouter {
             peers: HashMap::new(),
             demux: super::demux::Demux::new(),
             video_publishers: HashMap::new(),
+            viewers: StreamViewers::new(),
             notifications: Vec::new(),
             last_reallocation: now,
             last_housekeeping: now,
@@ -393,6 +405,58 @@ impl Str0mRouter {
         }
     }
 
+    /// Reports the users watching `publisher`'s screen share when the set changed.
+    fn refresh_viewers(&mut self, publisher: &SessionId) {
+        let Some(ssrc) = self
+            .peers
+            .get(publisher)
+            .and_then(|p| p.spec.screen.as_ref())
+            .map(|s| s.ssrc)
+        else {
+            return;
+        };
+        let watching = self
+            .peers
+            .iter()
+            .filter(|(id, peer)| {
+                *id != publisher
+                    && peer.alive
+                    && peer.sink_wants.watches(ssrc)
+                    && peer
+                        .subscriptions
+                        .get(publisher)
+                        .is_some_and(|s| s.screen.is_some())
+            })
+            .map(|(_, peer)| peer.spec.user.clone())
+            .collect();
+        if let Some(viewers) = self.viewers.update(publisher, watching) {
+            self.notifications.push(RouterNotification::StreamViewers {
+                session_id: publisher.clone(),
+                ssrc,
+                viewers,
+            });
+        }
+    }
+
+    /// Screen SSRCs of the publishers `subscriber` receives that it just started watching.
+    fn newly_watched_screens(
+        &self,
+        subscriber: &SessionId,
+        previous: &SinkWants,
+    ) -> Vec<(SessionId, u32)> {
+        let Some(peer) = self.peers.get(subscriber) else {
+            return Vec::new();
+        };
+        peer.subscriptions
+            .iter()
+            .filter_map(|(publisher, sub)| {
+                let screen = sub.screen.as_ref()?;
+                (peer.sink_wants.watches(screen.out_ssrc) && !previous.watches(screen.out_ssrc))
+                    .then(|| (publisher.clone(), screen.out_ssrc))
+            })
+            .collect()
+    }
+
     fn layer_offers(&mut self, publisher: &SessionId, now_us: u64) -> Vec<LayerOffer> {
         let Some(peer) = self.peers.get_mut(publisher) else {
             return Vec::new();
@@ -477,12 +541,14 @@ impl MediaRouter for Str0mRouter {
             }
         }
         self.demux.remove(id);
+        self.viewers.remove(id);
         self.notifications
             .retain(|n| n != &RouterNotification::TransportClosed(id.clone()));
         for other in remaining_peers {
             if let Some(peer) = self.peers.get_mut(other) {
                 peer.unsubscribe(id);
             }
+            self.refresh_viewers(other);
         }
         info!(session = %id, "session closed");
     }
@@ -492,8 +558,24 @@ impl MediaRouter for Str0mRouter {
             .peers
             .get_mut(id)
             .ok_or_else(|| RouterError::UnknownSession(id.clone()))?;
-        peer.sink_wants = wants;
-        self.reallocate(id, Instant::now());
+        let previous = std::mem::replace(&mut peer.sink_wants, wants);
+        let now = Instant::now();
+        self.reallocate(id, now);
+        for (publisher, ssrc) in self.newly_watched_screens(id, &previous) {
+            self.request_keyframe(
+                KeyframeNeed { publisher, ssrc },
+                KeyframeRequestKind::Pli,
+                now,
+            );
+        }
+        let publishers: Vec<SessionId> = self
+            .peers
+            .get(id)
+            .map(|p| p.subscriptions.keys().cloned().collect())
+            .unwrap_or_default();
+        for publisher in publishers {
+            self.refresh_viewers(&publisher);
+        }
         Ok(())
     }
 }

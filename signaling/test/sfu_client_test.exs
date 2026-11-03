@@ -63,6 +63,19 @@ defmodule DiscordyVoice.SfuClientTest do
     assert [%{"wants" => %{"10" => 50}}] = commands(server, "set_sink_wants")
   end
 
+  test "stream viewer events are routed to the streamer's connection", %{server: server} do
+    {:ok, _} = Registry.register(DiscordyVoice.SessionRegistry, "sess-1", nil)
+
+    FakeSfuServer.push(server, %{
+      evt: "stream_viewers",
+      session_id: "sess-1",
+      ssrc: 44,
+      viewers: ["u1", "u2"]
+    })
+
+    assert_receive {:sfu, {:stream_viewers, 44, ["u1", "u2"]}}
+  end
+
   test "speaking and closure events are routed to the owning connection", %{server: server} do
     {:ok, _} = Registry.register(DiscordyVoice.SessionRegistry, "sess-1", nil)
 

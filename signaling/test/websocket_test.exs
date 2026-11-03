@@ -118,6 +118,37 @@ defmodule DiscordyVoice.WebsocketTest do
     assert %{"op" => 6, "d" => %{"t" => 99}} = recv(ws)
   end
 
+  test "the streamer is told who watches its screen share", %{port: port, sfu: sfu} do
+    alice = connect(port)
+    recv(alice)
+    send_op(alice, 0, Fixtures.identify("alice", "sess-alice", "chan-1", video: true))
+    %{"op" => 2} = recv(alice)
+
+    ssrcs = %{"audio" => 111, "video" => 222, "rtx" => 333, "screen" => 444, "screen_rtx" => 555}
+    offer = put_in(Fixtures.select_protocol(video: true), ["data", "ssrcs"], ssrcs)
+    send_op(alice, 1, offer)
+    %{"op" => 4} = recv(alice)
+
+    FakeSfuServer.push(sfu, %{
+      evt: "stream_viewers",
+      session_id: "sess-alice",
+      ssrc: 444,
+      viewers: ["bob"]
+    })
+
+    assert %{"op" => 40, "d" => %{"ssrc" => 444, "user_ids" => ["bob"]}} = recv(alice)
+
+    # A report for an SSRC that is not this session's screen share is ignored.
+    FakeSfuServer.push(sfu, %{
+      evt: "stream_viewers",
+      session_id: "sess-alice",
+      ssrc: 999,
+      viewers: ["bob"]
+    })
+
+    assert :timeout = recv(alice, 200)
+  end
+
   test "two users see each other, speaking and disconnects", %{port: port, sfu: sfu} do
     alice = connect(port)
     recv(alice)
