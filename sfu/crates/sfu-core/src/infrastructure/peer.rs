@@ -361,6 +361,19 @@ impl Peer {
         }
     }
 
+    /// Restarts every simulcast video so it waits for a fresh keyframe. Used when the transport
+    /// becomes connected: whatever was forwarded before never reached the subscriber.
+    pub fn restart_video(&mut self) {
+        for video in self
+            .subscriptions
+            .values_mut()
+            .filter_map(|s| s.video.as_mut())
+            .filter(|v| !v.svc)
+        {
+            video.selector.restart();
+        }
+    }
+
     /// Applies a layer target for one publisher's video. Returns whether a keyframe is needed.
     pub fn set_video_target(
         &mut self,
