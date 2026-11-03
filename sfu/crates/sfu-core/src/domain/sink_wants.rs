@@ -31,6 +31,11 @@ impl SinkWants {
     pub fn wants(&self, ssrc: u32) -> bool {
         self.quality_for(ssrc) > 0
     }
+
+    /// Whether the subscriber explicitly opted in to the track (screen shares are opt-in).
+    pub fn watches(&self, ssrc: u32) -> bool {
+        self.by_ssrc.get(&ssrc).is_some_and(|q| *q > 0)
+    }
 }
 
 #[cfg(test)]
@@ -40,6 +45,16 @@ mod tests {
     #[test]
     fn unknown_ssrc_gets_default() {
         assert_eq!(SinkWants::new().quality_for(7), DEFAULT_QUALITY);
+    }
+
+    #[test]
+    fn watching_requires_an_explicit_positive_quality() {
+        let mut w = SinkWants::new();
+        assert!(!w.watches(1));
+        w.replace([(1, 0), (2, 40)]);
+        assert!(!w.watches(1));
+        assert!(w.watches(2));
+        assert!(!w.watches(3));
     }
 
     #[test]

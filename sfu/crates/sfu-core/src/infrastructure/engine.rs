@@ -199,6 +199,15 @@ fn dispatch_notifications(service: &mut SfuService<Str0mRouter, BroadcastPublish
                 ssrc,
                 speaking,
             }),
+            RouterNotification::StreamViewers {
+                session_id,
+                ssrc,
+                viewers,
+            } => service.events().publish(SfuEvent::StreamViewers {
+                session_id,
+                ssrc,
+                viewers,
+            }),
             RouterNotification::TransportClosed(id) => {
                 warn!(session = %id, "transport closed");
                 service.on_transport_closed(&id);

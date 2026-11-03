@@ -170,6 +170,15 @@ pub enum WireEvent {
         /// New state.
         speaking: bool,
     },
+    /// The users watching a publisher's screen share changed.
+    StreamViewers {
+        /// Publisher session id.
+        session_id: String,
+        /// Screen SSRC.
+        ssrc: u32,
+        /// Ids of every user now watching, sorted.
+        viewers: Vec<String>,
+    },
     /// Periodic node statistics.
     Stats {
         /// Live sessions.
