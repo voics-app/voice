@@ -40,6 +40,8 @@ pub struct Client {
     pub screen: Option<VideoLayer>,
     pub received: Vec<Received>,
     pub connected: bool,
+    /// Keyframe requests (PLI/FIR) received for our own video, not yet answered.
+    pub keyframe_requests: usize,
     seq: u64,
     video_seq: Vec<u64>,
 }
@@ -88,6 +90,7 @@ impl Client {
             screen: None,
             received: Vec::new(),
             connected: false,
+            keyframe_requests: 0,
             seq: 1,
             video_seq: vec![1_000; layers],
         }
@@ -254,6 +257,7 @@ impl Client {
                     let _ = self.socket.send_to(&t.contents, t.destination);
                 }
                 Output::Event(Event::Connected) => self.connected = true,
+                Output::Event(Event::KeyframeRequest(_)) => self.keyframe_requests += 1,
                 Output::Event(Event::RtpPacket(p)) => self.received.push(Received {
                     ssrc: *p.header.ssrc,
                     seq: p.header.sequence_number,
