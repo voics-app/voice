@@ -149,6 +149,7 @@ impl Str0mRouter {
             let mut inbound: Vec<InboundRtp> = Vec::new();
             let mut keyframe_requests: Vec<(SessionId, Mid, KeyframeRequestKind)> = Vec::new();
             let mut new_estimates: Vec<SessionId> = Vec::new();
+            let mut connected: Vec<SessionId> = Vec::new();
 
             for (id, peer) in self.peers.iter_mut().filter(|(_, p)| p.alive) {
                 loop {
@@ -164,7 +165,11 @@ impl Str0mRouter {
                         Ok(Output::Event(event)) => {
                             progressed = true;
                             match event {
-                                Event::Connected => info!(session = %id, "peer connected"),
+                                Event::Connected => {
+                                    info!(session = %id, "peer connected");
+                                    peer.restart_video();
+                                    connected.push(id.clone());
+                                }
                                 Event::IceConnectionStateChange(
                                     IceConnectionState::Disconnected,
                                 )
@@ -210,6 +215,9 @@ impl Str0mRouter {
             }
             for (subscriber, mid, kind) in keyframe_requests {
                 self.relay_keyframe_request(&subscriber, mid, kind, now);
+            }
+            for id in connected {
+                self.request_join_keyframes(&id, now);
             }
             for id in new_estimates {
                 self.reallocate(&id, now);
@@ -304,6 +312,43 @@ impl Str0mRouter {
             kind,
             now,
         );
+    }
+
+    /// Asks for a keyframe of every video `subscriber` receives. Keyframes requested while it
+    /// was still connecting were forwarded into a transport that could not send them yet, so
+    /// this request bypasses the throttle.
+    fn request_join_keyframes(&mut self, subscriber: &SessionId, now: Instant) {
+        let Some(peer) = self.peers.get(subscriber) else {
+            return;
+        };
+        let needs: Vec<KeyframeNeed> = peer
+            .subscriptions
+            .iter()
+            .flat_map(|(publisher, sub)| {
+                let camera = sub
+                    .video
+                    .as_ref()
+                    .and_then(|_| self.forwarded_layer_ssrc(subscriber, publisher));
+                let screen = sub
+                    .screen
+                    .as_ref()
+                    .filter(|s| peer.sink_wants.watches(s.out_ssrc))
+                    .map(|s| s.out_ssrc);
+                [camera, screen]
+                    .into_iter()
+                    .flatten()
+                    .map(|ssrc| KeyframeNeed {
+                        publisher: publisher.clone(),
+                        ssrc,
+                    })
+            })
+            .collect();
+        for need in needs {
+            if let Some(publisher) = self.peers.get_mut(&need.publisher) {
+                publisher.last_keyframe_request.remove(&need.ssrc);
+            }
+            self.request_keyframe(need, KeyframeRequestKind::Pli, now);
+        }
     }
 
     /// Inbound SSRC currently forwarded from `publisher` to `subscriber`.

@@ -48,6 +48,13 @@ impl LayerSelector {
         self.awaiting_keyframe()
     }
 
+    /// Forgets the forwarded layer so the next keyframe on the target layer starts the stream
+    /// again. Returns true when a keyframe must be requested on the target layer.
+    pub fn restart(&mut self) -> bool {
+        self.current = None;
+        self.awaiting_keyframe()
+    }
+
     /// True while waiting for a keyframe on the target layer.
     pub fn awaiting_keyframe(&self) -> bool {
         self.target.is_some() && self.target != self.current
@@ -102,6 +109,22 @@ mod tests {
         assert_eq!(s.on_packet(2, true), SWITCH);
         assert_eq!(s.on_packet(0, false), LayerDecision::Drop);
         assert_eq!(s.current(), Some(2));
+    }
+
+    #[test]
+    fn restart_waits_for_a_new_keyframe_on_the_target() {
+        let mut s = LayerSelector::new();
+        s.set_target(Some(1));
+        s.on_packet(1, true);
+        assert!(s.restart());
+        assert_eq!(s.on_packet(1, false), LayerDecision::Drop);
+        assert_eq!(s.on_packet(1, true), SWITCH);
+    }
+
+    #[test]
+    fn restart_without_a_target_needs_no_keyframe() {
+        let mut s = LayerSelector::new();
+        assert!(!s.restart());
     }
 
     #[test]
