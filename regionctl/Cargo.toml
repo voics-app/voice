@@ -1,6 +1,6 @@
 [package]
 name = "regionctl"
-description = "Discordy voice region control: scaffolds gitops overlays, manages Cloudflare DNS, drains regions"
+description = "Voics voice region control: scaffolds gitops overlays, manages Cloudflare DNS, drains regions"
 version = "0.1.0"
 edition = "2024"
 rust-version = "1.99"

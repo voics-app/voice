@@ -1,6 +1,6 @@
 # voice
 
-Discordy voice: the signaling service (Elixir), the SFU (Rust, [str0m](https://github.com/algesten/str0m)) and `regionctl`, the CLI that adds and drains voice regions.
+Voics voice: the signaling service (Elixir), the SFU (Rust, [str0m](https://github.com/algesten/str0m)) and `regionctl`, the CLI that adds and drains voice regions.
 
 | Component | Path | Image | Role |
 |---|---|---|---|

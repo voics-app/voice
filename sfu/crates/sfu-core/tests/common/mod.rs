@@ -1,4 +1,4 @@
-//! An in-process WebRTC client built on str0m, speaking the Discordy voice conventions:
+//! An in-process WebRTC client built on str0m, speaking the Voics voice conventions:
 //! direct API (no SDP), mids `a<ssrc>`/`v<ssrc>`, extension ids 1/2/3, DTLS active, ICE
 //! controlling.
 
