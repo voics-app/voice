@@ -1,4 +1,4 @@
-//! Composition root of the Discordy SFU.
+//! Composition root of the Voics SFU.
 
 mod config;
 mod http;

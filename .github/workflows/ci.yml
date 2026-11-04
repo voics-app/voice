@@ -30,7 +30,7 @@ jobs:
     with:
       working-directory: signaling
       image-name: voice-signaling
-      description: Discordy voice signaling
+      description: Voics voice signaling
       sobelow: false
 
   sfu:
@@ -41,7 +41,7 @@ jobs:
     with:
       working-directory: sfu
       image-name: voice-sfu
-      description: Discordy SFU
+      description: Voics SFU
       system-packages: cmake
 
   regionctl:
@@ -52,7 +52,7 @@ jobs:
     with:
       working-directory: regionctl
       image-name: regionctl
-      description: Discordy region control CLI
+      description: Voics region control CLI
 
   docker:
     needs: [signaling, sfu]
@@ -63,6 +63,6 @@ jobs:
     uses: discordy-voics/.github/.github/workflows/docker.yml@main
     with:
       image-name: voice-${{ matrix.component }}
-      description: Discordy voice ${{ matrix.component }}
+      description: Voics voice ${{ matrix.component }}
       context: ${{ matrix.component }}
       dockerfile: ${{ matrix.component }}/Dockerfile

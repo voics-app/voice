@@ -8,7 +8,7 @@ Voice is split in two processes per node so that media never waits on signaling 
 C4Component
   title Voice node: components
 
-  Person(client, "Discordy client", "Electron app, WebRTC")
+  Person(client, "Voics client", "Electron app, WebRTC")
   System_Ext(gateway, "gateway", "Mints voice tokens, allocates nodes, drains nodes")
   System_Ext(etcd, "etcd", "/discordy/voice/nodes/<region>/<node>, /discordy/voice/drain/<node>")
 

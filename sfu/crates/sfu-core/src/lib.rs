@@ -1,4 +1,4 @@
-//! Discordy SFU core.
+//! Voics SFU core.
 //!
 //! - [`domain`]: pure media-routing rules (no IO, no str0m).
 //! - [`application`]: use cases and the ports they drive.
