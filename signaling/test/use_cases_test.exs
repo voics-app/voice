@@ -229,11 +229,11 @@ defmodule DiscordyVoice.UseCasesTest do
       {conn, [{:reply, 2, _}, {:reply, 25, sender}]} =
         join(:a, "a", "ch-e", deps, claims: %{"e2ee" => true})
 
-      assert sender["protocol_version"] == 1
+      assert sender["protocol_version"] == 2
       assert sender["founder"] == true
 
       [{:reply, 4, desc}] = Conn.send_frame(conn, 1, Fixtures.select_protocol())
-      assert desc.e2ee == %{protocol_version: 1}
+      assert desc.e2ee == %{protocol_version: 2}
     end
 
     test "invalid offers and sfu failures close the connection", %{deps: deps} do
