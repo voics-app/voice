@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1.7
-# Discordy SFU (Rust, str0m). Build context: the sfu/ directory.
+# Voics SFU (Rust, str0m). Build context: the sfu/ directory.
 
 # Prebuilt, checksum-pinned cargo-chef (upstream release binary) instead of compiling it from source on every
 # cold build; unpacked in alpine because the slim rust image has no xz.
@@ -33,7 +33,7 @@ FROM gcr.io/distroless/cc-debian12:nonroot
 ARG VERSION=0.1.0
 ARG REVISION=unknown
 LABEL org.opencontainers.image.title="voice-sfu" \
-      org.opencontainers.image.description="Discordy voice SFU (str0m): UDP media mux and NDJSON control server" \
+      org.opencontainers.image.description="Voics voice SFU (str0m): UDP media mux and NDJSON control server" \
       org.opencontainers.image.source="https://github.com/discordy-voics/voice" \
       org.opencontainers.image.version="${VERSION}" \
       org.opencontainers.image.revision="${REVISION}" \

@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1.7
-# Discordy voice signaling (Elixir release). Build context: the signaling/ directory.
+# Voics voice signaling (Elixir release). Build context: the signaling/ directory.
 
 FROM hexpm/elixir:1.20.4-erlang-29.1.2-alpine-3.24.2 AS build
 RUN apk add --no-cache build-base git
@@ -21,7 +21,7 @@ FROM alpine:3.24.2
 ARG VERSION=0.1.0
 ARG REVISION=unknown
 LABEL org.opencontainers.image.title="voice-signaling" \
-      org.opencontainers.image.description="Discordy voice signaling: voice WebSocket, rooms, SFU control and etcd discovery" \
+      org.opencontainers.image.description="Voics voice signaling: voice WebSocket, rooms, SFU control and etcd discovery" \
       org.opencontainers.image.source="https://github.com/discordy-voics/voice" \
       org.opencontainers.image.version="${VERSION}" \
       org.opencontainers.image.revision="${REVISION}" \

@@ -8,7 +8,7 @@ Voice is split in two processes per node so that media never waits on signaling 
 C4Component
   title Voice node: components
 
-  Person(client, "Discordy client", "Electron app, WebRTC")
+  Person(client, "Voics client", "Electron app, WebRTC")
   System_Ext(gateway, "gateway", "Mints voice tokens, allocates nodes, drains nodes")
   System_Ext(etcd, "etcd", "/discordy/voice/nodes/<region>/<node>, /discordy/voice/drain/<node>")
 
@@ -72,7 +72,7 @@ Both services follow Clean Architecture; dependencies point inwards.
 - **Audio**: Opus is forwarded as is; 1-byte DTX comfort frames are dropped and absorbed by the rewriter. The audio-level header extension drives speaking detection (published to signaling as `speaking` events and relayed as SPEAKING).
 - **Video**: each viewer picks quality per publisher through MEDIA_SINK_WANTS; the SFU combines it with a bandwidth estimate (TWCC and REMB) to select a simulcast layer, switching only on keyframes. VP9 sent as one SSRC with spatial layers (SVC) is filtered by layer instead. NACK, PLI and FIR are terminated or forwarded to the publisher with throttling. When a subscriber's transport becomes connected, every simulcast video restarts at its next keyframe and a keyframe is requested for each camera and watched screen share, unthrottled, because keyframes forwarded while the subscriber was still connecting never reached it (a rejoining viewer would otherwise see a black camera).
 - **Screen share**: opt-in. A subscriber receives a publisher's screen stream only after MEDIA_SINK_WANTS lists its screen SSRC (from the VIDEO payload, `type: "screen"`) with a quality above 0; without it the packets are skipped and no bandwidth is used. The SFU tracks the opted-in users per screen share and sends a `stream_viewers` event when the set changes; signaling relays it to the streamer only, as op 40 `STREAM_VIEWERS` `{ssrc, user_ids}` (the complete viewer list, so an empty list means nobody watches).
-- **E2EE (DAVE)**: when the token says `e2ee`, signaling announces an MLS external sender (op 25) and relays key packages, proposals, commits (announced as op 29), welcomes (op 30) and transition messages between members. Payloads are opaque to the server; it never holds group key material. Clients that join late receive a welcome from the member that commits. The server does not itself issue removal proposals (that needs an MLS implementation); remaining members' clients do.
+- **E2EE (DAVE)**: when the token says `e2ee`, signaling announces an MLS external sender (op 25) and relays key packages, proposals, commits (announced as op 29), welcomes (op 30) and transition messages between members. Payloads are opaque to the server; it never holds group key material. The announced `protocol_version` is 2, the only version: it names the media frame layout the clients use (LiveKit-compatible, see the voice protocol page in the handbook), and clients refuse a call that announces another. Clients that join late receive a welcome from the member that commits. The server does not itself issue removal proposals (that needs an MLS implementation); remaining members' clients do.
 
 ## Failure handling
 

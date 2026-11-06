@@ -1,6 +1,6 @@
 [package]
 name = "sfu"
-description = "Discordy SFU binary: media engine, control server and operational endpoints"
+description = "Voics SFU binary: media engine, control server and operational endpoints"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

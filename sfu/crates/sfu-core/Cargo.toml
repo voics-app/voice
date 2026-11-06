@@ -1,6 +1,6 @@
 [package]
 name = "sfu-core"
-description = "Discordy SFU core: domain rules, use cases and the str0m media engine"
+description = "Voics SFU core: domain rules, use cases and the str0m media engine"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

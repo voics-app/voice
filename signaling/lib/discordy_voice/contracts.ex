@@ -49,9 +49,13 @@ defmodule DiscordyVoice.Contracts do
   @spec identify_timeout_ms() :: pos_integer()
   def identify_timeout_ms, do: 10_000
 
-  @doc "DAVE protocol version announced in SESSION_DESCRIPTION."
+  @doc """
+  DAVE protocol version announced in SESSION_DESCRIPTION and in the external-sender op. Version 2 is the
+  only one: it selects the LiveKit-compatible media frame layout (see docs protocols/voice.md), and clients
+  refuse a call that announces any other version.
+  """
   @spec dave_protocol_version() :: pos_integer()
-  def dave_protocol_version, do: 1
+  def dave_protocol_version, do: 2
 
   # -- WebSocket close codes ----------------------------------------------------------------
 

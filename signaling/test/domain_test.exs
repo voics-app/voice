@@ -153,7 +153,7 @@ defmodule DiscordyVoice.DomainTest do
 
     test "external sender announcement carries version, credential and key" do
       assert %{
-               "protocol_version" => 1,
+               "protocol_version" => 2,
                "external_sender" => %{"credential" => c, "signature_key" => k}
              } =
                Dave.external_sender("room", <<1, 2, 3>>)

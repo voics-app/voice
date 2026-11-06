@@ -1,6 +1,6 @@
 [package]
 name = "sfu-control"
-description = "Discordy SFU control server: newline-delimited JSON over TCP (pinned interface P8)"
+description = "Voics SFU control server: newline-delimited JSON over TCP (pinned interface P8)"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
