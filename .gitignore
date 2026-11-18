@@ -6,6 +6,7 @@
 # rust
 /sfu/target/
 /regionctl/target/
+/prober/target/
 **/*.rs.bk
 
 # elixir
