@@ -31,6 +31,8 @@ defmodule DiscordyVoice.Application.Settings do
     :internal_token,
     :sfu_control,
     :http_port,
+    probe_token_secret: nil,
+    probe_required: false,
     lan_ip: nil,
     sfu_executable: nil,
     drain_on_start: false,
@@ -47,6 +49,8 @@ defmodule DiscordyVoice.Application.Settings do
           udp_port: 1..65_535,
           etcd_endpoints: [String.t()],
           token_secret: String.t(),
+          probe_token_secret: String.t() | nil,
+          probe_required: boolean(),
           internal_token: String.t(),
           sfu_control: {String.t(), 1..65_535},
           http_port: 0..65_535,
@@ -72,6 +76,8 @@ defmodule DiscordyVoice.Application.Settings do
       {:udp_port, port(vars, "VOICE_UDP_PORT", "50000")},
       {:etcd_endpoints, endpoints(vars)},
       {:token_secret, secret(vars, "VOICE_TOKEN_SECRET")},
+      {:probe_token_secret, probe_secret(vars)},
+      {:probe_required, boolean(vars, "VOICE_REQUIRE_PROBE")},
       {:internal_token, required(vars, "INTERNAL_SERVICE_TOKEN")},
       {:sfu_control, host_port(vars, "SFU_CONTROL_ADDR", "127.0.0.1:4101")},
       {:http_port, port(vars, "PORT", "4100")},
@@ -116,6 +122,32 @@ defmodule DiscordyVoice.Application.Settings do
       "production" -> {:ok, :production}
       value when value in [nil, "", "local"] -> {:ok, :local}
       other -> {:error, "DISCORDY_ENV must be local or production, got #{other}"}
+    end
+  end
+
+  defp probe_secret(vars) do
+    call_key = vars["VOICE_TOKEN_SECRET"]
+
+    case blank_to_nil(vars["VOICE_PROBE_TOKEN_SECRET"]) do
+      nil ->
+        {:ok, nil}
+
+      key when key == call_key ->
+        {:error, "VOICE_PROBE_TOKEN_SECRET must be distinct from VOICE_TOKEN_SECRET"}
+
+      key when byte_size(key) < 32 ->
+        {:error, "VOICE_PROBE_TOKEN_SECRET must be at least 32 bytes"}
+
+      key ->
+        {:ok, key}
+    end
+  end
+
+  defp boolean(vars, name) do
+    case vars[name] do
+      value when value in [nil, "", "false", "0"] -> {:ok, false}
+      value when value in ["true", "1"] -> {:ok, true}
+      _ -> {:error, "#{name} must be true or false"}
     end
   end
 

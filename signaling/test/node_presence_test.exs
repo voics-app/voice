@@ -32,6 +32,7 @@ defmodule DiscordyVoice.NodePresenceTest do
 
     assert lease > 0
     assert NodePresence.registered?()
+    assert NodePresence.lease_id() == {:ok, Integer.to_string(lease)}
 
     assert %{
              "node_id" => "node-1",
@@ -43,6 +44,7 @@ defmodule DiscordyVoice.NodePresenceTest do
              "cpu_pct" => cpu,
              "egress_bps" => _,
              "draining" => false,
+             "probe_required" => false,
              "version" => "0.1.0"
            } = Jason.decode!(json)
 
@@ -52,6 +54,31 @@ defmodule DiscordyVoice.NodePresenceTest do
   test "keeps the lease alive on every tick" do
     eventually(fn -> Enum.count(FakeNodeRegistry.ops(), &(&1 == :keep_alive)) >= 2 end)
     assert Enum.count(FakeNodeRegistry.ops(), &(&1 == :grant)) == 1
+  end
+
+  test "lease identity is unavailable after the local deadline or process exit" do
+    start_supervised!(
+      {NodePresence,
+       settings: Fixtures.settings(node_id: "lease-check", probe_required: true),
+       registry: FakeNodeRegistry,
+       interval_ms: 60_000,
+       name: :lease_check},
+      id: :lease_check
+    )
+
+    eventually(fn -> NodePresence.registered?(:lease_check) end)
+    assert {:ok, _lease} = NodePresence.lease_id(:lease_check)
+    {json, _lease} = FakeNodeRegistry.get(Contracts.node_key("nl-home", "lease-check"))
+    assert Jason.decode!(json)["probe_required"]
+
+    :sys.replace_state(
+      :lease_check,
+      &%{&1 | valid_until: System.monotonic_time(:millisecond) - 1}
+    )
+
+    assert {:error, :unregistered} = NodePresence.lease_id(:lease_check)
+    stop_supervised!(:lease_check)
+    assert {:error, :unregistered} = NodePresence.lease_id(:lease_check)
   end
 
   test "re-grants a lost lease and re-registers" do

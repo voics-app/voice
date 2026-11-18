@@ -12,7 +12,8 @@ defmodule DiscordyVoice.Domain.NodeStatus do
     users: 0,
     cpu_pct: 0.0,
     egress_bps: 0,
-    draining: false
+    draining: false,
+    probe_required: false
   ]
 
   @type t :: %__MODULE__{}
@@ -30,6 +31,7 @@ defmodule DiscordyVoice.Domain.NodeStatus do
       cpu_pct: Float.round(status.cpu_pct * 1.0, 1),
       egress_bps: status.egress_bps,
       draining: status.draining,
+      probe_required: status.probe_required,
       version: status.version
     })
   end

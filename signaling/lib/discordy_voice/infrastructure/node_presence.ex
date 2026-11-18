@@ -29,6 +29,14 @@ defmodule DiscordyVoice.Infrastructure.NodePresence do
     :exit, _reason -> false
   end
 
+  @doc "The current live registration lease, for node-bound synthetic probes."
+  @spec lease_id(GenServer.server()) :: {:ok, String.t()} | {:error, :unregistered}
+  def lease_id(server \\ __MODULE__) do
+    GenServer.call(server, :lease_id)
+  catch
+    :exit, _reason -> {:error, :unregistered}
+  end
+
   @impl true
   def init(opts) do
     Process.flag(:trap_exit, true)
@@ -57,6 +65,15 @@ defmodule DiscordyVoice.Infrastructure.NodePresence do
   @impl true
   def handle_call(:registered?, _from, state),
     do: {:reply, state.lease != nil and now() < state.valid_until, state}
+
+  def handle_call(:lease_id, _from, state) do
+    result =
+      if state.lease != nil and now() < state.valid_until,
+        do: {:ok, Integer.to_string(state.lease)},
+        else: {:error, :unregistered}
+
+    {:reply, result, state}
+  end
 
   @impl true
   def handle_info(:tick, state), do: {:noreply, tick(state)}
@@ -149,7 +166,8 @@ defmodule DiscordyVoice.Infrastructure.NodePresence do
       users: NodeLoad.users(),
       cpu_pct: NodeLoad.cpu_pct(),
       egress_bps: NodeLoad.egress_bps(),
-      draining: DrainControl.draining?()
+      draining: DrainControl.draining?(),
+      probe_required: settings.probe_required
     })
   end
 end

@@ -192,6 +192,7 @@ defmodule DiscordyVoice.DomainTest do
              "cpu_pct" => 12.3,
              "egress_bps" => 9,
              "draining" => true,
+             "probe_required" => false,
              "version" => "0.1.0"
            }
   end

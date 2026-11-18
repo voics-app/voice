@@ -79,6 +79,8 @@ Names follow pinned interface P2. Configuration is read from the environment and
 | `SFU_CONTROL_ADDR` | no | `127.0.0.1:4101` | SFU control socket |
 | `SFU_EXECUTABLE` | no | unset | When set, signaling runs and restarts the SFU itself (otherwise it is a sibling container) |
 | `VOICE_DRAIN_ON_START` | no | `false` | Start in drain mode (set by `regionctl drain --region`) |
+| `VOICE_PROBE_TOKEN_SECRET` | no | unset | Prepared active-probe admission key, at least 32 bytes and distinct from `VOICE_TOKEN_SECRET`; absent disables probes |
+| `VOICE_REQUIRE_PROBE` | no | `false` | Advertise that new allocations require current leased healthy probe results; enable only after the independent observer and gateway support are verified |
 | `PORT` | no | `4100` | HTTP and WebSocket port |
 | `DISCORDY_ENV` | no | `local` | `local` or `production` |
 | `LOG_LEVEL` | no | `info` | `debug`, `info`, `notice`, `warning`, `error` |
