@@ -81,7 +81,8 @@ Both services follow Clean Architecture; dependencies point inwards.
 | SFU process dies | `SfuClient` reconnects with back-off; on connect it sends `sync` with its sessions. The SFU closes sessions signaling does not know and reports the ones it lost, which are replayed with `create_session` under their original ICE credentials. With `SFU_EXECUTABLE` set, `SfuSupervisor` restarts the process; otherwise the orchestrator restarts the container. A new SFU process has a new DTLS certificate, so clients must ICE-restart. |
 | Signaling restarts | Sessions reconnect their WebSockets; `sync` with an empty list closes the SFU's orphans. |
 | A client socket crashes | The room monitors member processes: the SFU session is closed and the others receive CLIENT_DISCONNECT. |
-| etcd unreachable or lease lost | The lease is re-granted on the next 3 s tick; the node is absent from allocation while the lease is missing. Existing calls are unaffected. |
+| etcd unreachable or lease lost | The lease is re-granted on the next 3 s tick. New IDENTIFY requests are refused until the node owns a fresh registration; the local lease deadline also fences a paused process. Existing calls are unaffected. |
+| Duplicate node ID | Atomic etcd claim fails and the contender stays unready. Refresh and graceful deletion compare the owning lease, so a stale process cannot overwrite or delete a replacement. |
 | Node drain | New IDENTIFYs are refused (close 4011); existing sessions continue. |
 
 ## Regions

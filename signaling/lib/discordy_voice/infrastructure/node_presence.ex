@@ -9,6 +9,7 @@ defmodule DiscordyVoice.Infrastructure.NodePresence do
   """
 
   use GenServer
+  @behaviour DiscordyVoice.Application.Ports.NodeRegistration
 
   alias DiscordyVoice.Contracts
   alias DiscordyVoice.Domain.NodeStatus
@@ -22,7 +23,11 @@ defmodule DiscordyVoice.Infrastructure.NodePresence do
 
   @doc "Whether the node's registration currently exists in the store."
   @spec registered?(GenServer.server()) :: boolean()
-  def registered?(server \\ __MODULE__), do: GenServer.call(server, :registered?)
+  def registered?(server \\ __MODULE__) do
+    GenServer.call(server, :registered?)
+  catch
+    :exit, _reason -> false
+  end
 
   @impl true
   def init(opts) do
@@ -36,6 +41,7 @@ defmodule DiscordyVoice.Infrastructure.NodePresence do
       interval: Keyword.get(opts, :interval_ms, Contracts.refresh_interval_ms()),
       key: Contracts.node_key(settings.region, settings.node_id),
       lease: nil,
+      valid_until: 0,
       drained_by_marker: false
     }
 
@@ -49,7 +55,8 @@ defmodule DiscordyVoice.Infrastructure.NodePresence do
   def handle_continue(:tick, state), do: {:noreply, tick(state)}
 
   @impl true
-  def handle_call(:registered?, _from, state), do: {:reply, state.lease != nil, state}
+  def handle_call(:registered?, _from, state),
+    do: {:reply, state.lease != nil and now() < state.valid_until, state}
 
   @impl true
   def handle_info(:tick, state), do: {:noreply, tick(state)}
@@ -63,7 +70,7 @@ defmodule DiscordyVoice.Infrastructure.NodePresence do
 
   @impl true
   def terminate(_reason, %{lease: lease, registry: registry, key: key}) when lease != nil do
-    registry.delete(key)
+    safe(fn -> registry.release(key, lease) end)
     :ok
   end
 
@@ -91,14 +98,26 @@ defmodule DiscordyVoice.Infrastructure.NodePresence do
   end
 
   defp register(state) do
+    deadline = now() + Contracts.lease_ttl_s() * 1_000
+
     with {:ok, lease} <- ensure_lease(state),
-         :ok <- safe(fn -> state.registry.put(state.key, status_json(state.settings), lease) end) do
-      %{state | lease: lease}
+         :ok <- write_registration(state, lease) do
+      %{state | lease: lease, valid_until: deadline}
     else
       {:error, reason} ->
         Logger.warning("etcd registration failed: #{inspect(reason)}")
         %{state | lease: nil}
     end
+  end
+
+  defp now, do: System.monotonic_time(:millisecond)
+
+  defp write_registration(%{lease: lease} = state, lease) do
+    safe(fn -> state.registry.refresh(state.key, status_json(state.settings), lease) end)
+  end
+
+  defp write_registration(state, lease) do
+    safe(fn -> state.registry.claim(state.key, status_json(state.settings), lease) end)
   end
 
   defp ensure_lease(%{lease: nil, registry: registry}),
