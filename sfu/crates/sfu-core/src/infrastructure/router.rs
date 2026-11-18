@@ -1,6 +1,6 @@
 //! The str0m media router: owns every peer, demultiplexes the UDP mux and forwards media.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::net::SocketAddr;
 use std::time::{Duration, Instant};
 
@@ -150,6 +150,7 @@ impl Str0mRouter {
             let mut keyframe_requests: Vec<(SessionId, Mid, KeyframeRequestKind)> = Vec::new();
             let mut new_estimates: Vec<SessionId> = Vec::new();
             let mut connected: Vec<SessionId> = Vec::new();
+            let mut active_publishers = HashSet::new();
 
             for (id, peer) in self.peers.iter_mut().filter(|(_, p)| p.alive) {
                 loop {
@@ -179,13 +180,15 @@ impl Str0mRouter {
                                 }
                                 Event::RtpPacket(packet) => {
                                     if let Some(rtp) = classify(id, peer, packet, self.start, now) {
-                                        record_inbound(
+                                        if record_inbound(
                                             id,
                                             peer,
                                             &rtp,
                                             &mut self.notifications,
                                             self.start,
-                                        );
+                                        ) {
+                                            active_publishers.insert(id.clone());
+                                        }
                                         inbound.push(rtp);
                                     }
                                 }
@@ -210,6 +213,23 @@ impl Str0mRouter {
                 }
             }
 
+            // A new layer must be allocated when its first packet arrives, not at the next
+            // periodic bitrate/reallocation tick. This also handles camera restart after idle.
+            if !active_publishers.is_empty() {
+                let subscribers: Vec<SessionId> = self
+                    .peers
+                    .iter()
+                    .filter(|(_, peer)| {
+                        active_publishers
+                            .iter()
+                            .any(|publisher| peer.subscriptions.contains_key(publisher))
+                    })
+                    .map(|(id, _)| id.clone())
+                    .collect();
+                for subscriber in subscribers {
+                    self.reallocate(&subscriber, now);
+                }
+            }
             for packet in &inbound {
                 self.fan_out(packet);
             }
@@ -512,7 +532,7 @@ impl Str0mRouter {
             .zip(peer.layer_meters.iter_mut())
             .map(|(quality, meter)| LayerOffer {
                 quality,
-                bitrate_bps: meter.bps(now_us),
+                bitrate_bps: meter.estimate_bps(now_us),
             })
             .collect()
     }
@@ -655,14 +675,14 @@ fn classify(
     })
 }
 
-/// Publisher-side bookkeeping for an inbound packet: speaking detection and layer bitrate.
+/// Publisher-side bookkeeping. Returns whether a video layer has just become active.
 fn record_inbound(
     id: &SessionId,
     peer: &mut Peer,
     rtp: &InboundRtp,
     notifications: &mut Vec<RouterNotification>,
     start: Instant,
-) {
+) -> bool {
     match rtp.track {
         TrackKind::Audio => {
             let change = peer.speaking.on_packet(
@@ -680,11 +700,14 @@ fn record_inbound(
         }
         TrackKind::VideoLayer(index) => {
             if let Some(meter) = peer.layer_meters.get_mut(index) {
+                let was_inactive = meter.estimate_bps(rtp.arrival_us) == 0;
                 meter.record(rtp.payload.len(), rtp.arrival_us);
+                return was_inactive && !rtp.payload.is_empty();
             }
         }
         TrackKind::Screen => {}
     }
+    false
 }
 
 fn micros(start: Instant, at: Instant) -> u64 {
