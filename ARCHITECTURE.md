@@ -87,4 +87,11 @@ Both services follow Clean Architecture; dependencies point inwards.
 
 ## Regions
 
+Active media probes use a separate signing key and `purpose=probe` tokens bound to the current
+live registration lease. Signaling derives a private room from that lease and a per-run UUID;
+caller-provided server/channel IDs never select a user room. Probe sessions are audio-only and
+may bypass draining only after authentication and lease checks. Ordinary call tokens retain
+their existing key and behavior. `VOICE_REQUIRE_PROBE` defaults to false; this signaling support
+does not start an observer or enable health enforcement. See central ADR-0025 and contracts PR45.
+
 A region is a directory in the gitops repository (`regions/<name>/kustomization.yaml`) layered over `regions/_template`, plus a DNS record for its WebSocket host. `regionctl add` creates both, taking the next free `SNOWFLAKE_WORKER_ID` in 192-255 (P5). `regionctl drain <node_id>` calls the gateway's internal drain API; `regionctl drain --region <name>` records `VOICE_DRAIN_ON_START` in the overlay so the region's nodes boot draining.

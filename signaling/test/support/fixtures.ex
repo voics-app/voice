@@ -114,6 +114,8 @@ defmodule DiscordyVoice.RegisteredNode do
   @behaviour DiscordyVoice.Application.Ports.NodeRegistration
   @impl true
   def registered?, do: true
+  @impl true
+  def lease_id, do: {:ok, "1"}
 end
 
 defmodule DiscordyVoice.UnregisteredNode do
@@ -121,6 +123,8 @@ defmodule DiscordyVoice.UnregisteredNode do
   @behaviour DiscordyVoice.Application.Ports.NodeRegistration
   @impl true
   def registered?, do: false
+  @impl true
+  def lease_id, do: {:error, :unregistered}
 end
 
 defmodule DiscordyVoice.FakeSfu do

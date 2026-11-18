@@ -17,7 +17,8 @@ defmodule DiscordyVoice.Application.UseCases.Identify do
          {:ok, claims} <- authenticate(request, deps),
          :ok <- check_node(claims, deps),
          :ok <- check_registration(deps),
-         :ok <- check_not_draining(deps) do
+         :ok <- check_probe(request, claims, deps),
+         :ok <- check_not_draining(claims, deps) do
       join(session, request, claims, deps)
     end
   end
@@ -52,15 +53,25 @@ defmodule DiscordyVoice.Application.UseCases.Identify do
   defp check_node(%{"node" => node}, %Deps{settings: %{node_id: node}}), do: :ok
   defp check_node(_claims, _deps), do: {:close, :wrong_node}
 
-  defp check_not_draining(deps),
+  defp check_not_draining(%{"purpose" => "probe"}, _deps), do: :ok
+
+  defp check_not_draining(_claims, deps),
     do: if(deps.drain.draining?(), do: {:close, :server_draining}, else: :ok)
+
+  defp check_probe(request, %{"purpose" => "probe", "node_lease" => lease}, deps) do
+    if not request.video and deps.registration.lease_id() == {:ok, lease},
+      do: :ok,
+      else: {:close, :authentication_failed}
+  end
+
+  defp check_probe(_request, _claims, _deps), do: :ok
 
   defp check_registration(deps),
     do: if(deps.registration.registered?(), do: :ok, else: {:close, :sfu_unavailable})
 
   defp join(session, request, claims, deps) do
     plan = deps.ssrc.allocate()
-    channel_id = claims["chn"]
+    channel_id = channel_id(claims)
 
     member = %Member{
       user_id: request.user_id,
@@ -89,6 +100,11 @@ defmodule DiscordyVoice.Application.UseCases.Identify do
         {:close, :sfu_unavailable}
     end
   end
+
+  defp channel_id(%{"purpose" => "probe", "node_lease" => lease, "probe_id" => probe_id}),
+    do: "probe:" <> lease <> ":" <> String.downcase(probe_id)
+
+  defp channel_id(claims), do: claims["chn"]
 
   defp replies(session, existing, external_sender, deps) do
     settings = deps.settings
