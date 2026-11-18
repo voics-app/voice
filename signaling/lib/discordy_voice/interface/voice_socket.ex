@@ -51,7 +51,9 @@ defmodule DiscordyVoice.Interface.VoiceSocket do
     do: close(:session_timeout, [], state)
 
   def handle_info(:identify_timeout, state), do: {:ok, state}
-  def handle_info(:heartbeat_timeout, state), do: close(:session_timeout, [], state)
+
+  def handle_info({:timeout, ref, :heartbeat_timeout}, %{heartbeat_timer: ref} = state),
+    do: close(:session_timeout, [], state)
 
   def handle_info({:sfu, {:closed, _reason}}, state), do: close(:disconnected, [], state)
 
@@ -109,6 +111,8 @@ defmodule DiscordyVoice.Interface.VoiceSocket do
   defp arm_heartbeat(state) do
     if state.heartbeat_timer, do: Process.cancel_timer(state.heartbeat_timer)
     timeout = round(Contracts.heartbeat_interval_ms() * Contracts.heartbeat_grace_factor())
-    %{state | heartbeat_timer: Process.send_after(self(), :heartbeat_timeout, timeout)}
+    # cancel_timer cannot retract a timeout already in our mailbox. The timer reference
+    # fences that old message after a heartbeat renews the current deadline.
+    %{state | heartbeat_timer: :erlang.start_timer(timeout, self(), :heartbeat_timeout)}
   end
 end
