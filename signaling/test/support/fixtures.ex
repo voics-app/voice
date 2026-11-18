@@ -34,7 +34,8 @@ defmodule DiscordyVoice.Fixtures do
       sfu: DiscordyVoice.FakeSfu,
       rooms: Rooms,
       ssrc: SsrcCounter,
-      drain: DrainControl
+      drain: DrainControl,
+      registration: DiscordyVoice.RegisteredNode
     }
 
     deps = struct!(base, overrides)
@@ -106,6 +107,20 @@ defmodule DiscordyVoice.Fixtures do
       "codecs" => codecs
     }
   end
+end
+
+defmodule DiscordyVoice.RegisteredNode do
+  @moduledoc false
+  @behaviour DiscordyVoice.Application.Ports.NodeRegistration
+  @impl true
+  def registered?, do: true
+end
+
+defmodule DiscordyVoice.UnregisteredNode do
+  @moduledoc false
+  @behaviour DiscordyVoice.Application.Ports.NodeRegistration
+  @impl true
+  def registered?, do: false
 end
 
 defmodule DiscordyVoice.FakeSfu do
@@ -206,6 +221,30 @@ defmodule DiscordyVoice.FakeNodeRegistry do
   @impl true
   def delete(key),
     do: Agent.update(__MODULE__, &%{&1 | keys: Map.delete(&1.keys, key), ops: [:delete | &1.ops]})
+
+  @impl true
+  def claim(key, value, lease) do
+    Agent.get_and_update(__MODULE__, fn state ->
+      if Map.has_key?(state.keys, key),
+        do: {{:error, :registration_conflict}, state},
+        else: {:ok, %{state | keys: Map.put(state.keys, key, {value, lease})}}
+    end)
+  end
+
+  @impl true
+  def refresh(key, value, lease), do: owned_update(key, lease, &Map.put(&1, key, {value, lease}))
+
+  @impl true
+  def release(key, lease), do: owned_update(key, lease, &Map.delete(&1, key))
+
+  defp owned_update(key, lease, update) do
+    Agent.get_and_update(__MODULE__, fn state ->
+      case state.keys[key] do
+        {_value, ^lease} -> {:ok, %{state | keys: update.(state.keys)}}
+        _ -> {{:error, :registration_conflict}, state}
+      end
+    end)
+  end
 
   @impl true
   def exists?(key), do: {:ok, Agent.get(__MODULE__, &Map.has_key?(&1.keys, key))}

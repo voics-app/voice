@@ -16,6 +16,7 @@ defmodule DiscordyVoice.Application.UseCases.Identify do
     with {:ok, request} <- parse(d),
          {:ok, claims} <- authenticate(request, deps),
          :ok <- check_node(claims, deps),
+         :ok <- check_registration(deps),
          :ok <- check_not_draining(deps) do
       join(session, request, claims, deps)
     end
@@ -53,6 +54,9 @@ defmodule DiscordyVoice.Application.UseCases.Identify do
 
   defp check_not_draining(deps),
     do: if(deps.drain.draining?(), do: {:close, :server_draining}, else: :ok)
+
+  defp check_registration(deps),
+    do: if(deps.registration.registered?(), do: :ok, else: {:close, :sfu_unavailable})
 
   defp join(session, request, claims, deps) do
     plan = deps.ssrc.allocate()

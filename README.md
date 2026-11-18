@@ -10,6 +10,23 @@ Voics voice: the signaling service (Elixir), the SFU (Rust, [str0m](https://gith
 
 The design follows [How Discord handles two and a half million concurrent voice users using WebRTC](https://discord.com/blog/how-discord-handles-two-and-half-million-concurrent-voice-users-using-webrtc): one SFU per node, all channels of a guild on one node, signaling decoupled from media, and state rebuilt by replaying sessions when the SFU restarts. The wire contracts are the pinned interface **P8** of the master plan; see [ARCHITECTURE.md](ARCHITECTURE.md).
 
+## Multiple voice nodes
+
+Each signaling process and its SFU form one allocation target. Give it a unique `VOICE_NODE_ID`,
+dedicated `VOICE_PUBLIC_WS_URL`, and reachable public IP/UDP-port pair. The gateway selects
+that target once per guild or DM call and reuses it. A WebSocket Service that randomly routes
+the node's URL to another signaling replica breaks token and room affinity.
+
+Node discovery uses an atomic etcd claim. A duplicate live identity cannot overwrite the
+existing owner; refresh and shutdown deletion compare the owning lease. A process with an
+expired or lost registration reports unready and rejects new IDENTIFY requests. Existing media
+sessions continue while discovery recovers. A replica that crashes leaves its lease to expire
+before a replacement can acquire its ID. Signaling does not generate Snowflake IDs.
+
+The ownership regression runs against real etcd as part of `signaling/test/etcd_integration_test.exs`.
+For tests already running in a Docker network, set `ETCD_TEST_ENDPOINT=etcd-host:2379`; otherwise
+the suite starts a disposable etcd on a random host port.
+
 ## Run locally
 
 Prerequisites: Rust 1.99, Elixir 1.20 / OTP 29, an etcd on `localhost:2379` (the compose stack in `gitops/local` provides one).

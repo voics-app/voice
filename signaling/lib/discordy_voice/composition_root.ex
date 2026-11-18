@@ -78,7 +78,8 @@ defmodule DiscordyVoice.CompositionRoot do
       sfu: Infrastructure.SfuClient,
       rooms: Infrastructure.Rooms,
       ssrc: Infrastructure.SsrcCounter,
-      drain: Infrastructure.DrainControl
+      drain: Infrastructure.DrainControl,
+      registration: Infrastructure.NodePresence
     }
   end
 
