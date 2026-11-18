@@ -132,7 +132,14 @@ async fn rejoining_viewer_receives_a_camera_keyframe() {
     .await
     .expect("client thread");
 
+    eprintln!(
+        "camera keyframe after transport connection: first={first_keyframe:?}, rejoin={second_keyframe:?}"
+    );
     assert!(first_keyframe.is_some(), "first join gets a keyframe");
+    assert!(
+        first_keyframe.is_some_and(|latency| latency < Duration::from_millis(500)),
+        "first join must not wait for a complete bitrate window: {first_keyframe:?}"
+    );
     assert!(
         second_keyframe.is_some(),
         "rejoined viewer gets a keyframe within {KEYFRAME_DEADLINE:?}"

@@ -204,6 +204,7 @@ impl Client {
                 .ext_vals(ext),
             );
         }
+        self.drain_output();
     }
 
     /// Sends one VP8 packet on a layer.
@@ -225,6 +226,7 @@ impl Client {
                 .nackable(true),
             );
         }
+        self.drain_output();
     }
 
     /// Sends one VP8 packet on the screen share.
@@ -246,10 +248,12 @@ impl Client {
                 .nackable(true),
             );
         }
+        self.drain_output();
     }
 
-    /// Moves str0m forward: drains output, reads the socket.
-    pub fn pump(&mut self) {
+    /// str0m retains only one received RTP event until poll_output consumes it. Drain after
+    /// every input, including each datagram in a burst, before mutating the RTC again.
+    fn drain_output(&mut self) {
         loop {
             match self.rtc.poll_output().expect("poll") {
                 Output::Timeout(_) => break,
@@ -267,6 +271,11 @@ impl Client {
                 Output::Event(_) => {}
             }
         }
+    }
+
+    /// Moves str0m forward: drains output, reads the socket.
+    pub fn pump(&mut self) {
+        self.drain_output();
         let mut buf = [0u8; 2048];
         loop {
             match self.socket.recv_from(&mut buf) {
@@ -284,6 +293,7 @@ impl Client {
                         },
                     );
                     self.rtc.handle_input(input).expect("handle input");
+                    self.drain_output();
                 }
                 Err(e) if e.kind() == ErrorKind::WouldBlock => break,
                 Err(_) => break,
@@ -292,6 +302,7 @@ impl Client {
         self.rtc
             .handle_input(Input::Timeout(Instant::now()))
             .expect("timeout");
+        self.drain_output();
     }
 
     pub fn received_from(&self, ssrc: u32) -> Vec<&Received> {

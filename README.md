@@ -53,6 +53,8 @@ make docker  # builds voice-signaling and voice-sfu
 ```
 
 - `sfu/crates/sfu-core/tests/two_clients_audio.rs`: two in-process str0m clients exchange Opus through the SFU over real UDP.
+- `sfu/crates/sfu-core/tests/screen_share.rs`: exact packet and payload delivery for paced and burst screen streams, plus opt-in isolation. The shared client drains str0m output after every received datagram and RTP write: RTP mode retains only one pending packet event, so batching inputs before polling silently loses observations in the fixture.
+- `sfu/crates/sfu-core/tests/camera_rejoin.rs`: first/rejoin keyframe latency after transport connection, including a deliberately delayed viewer handshake. The first keyframe must arrive within 500ms; allocation uses a startup estimate so it does not wait for a complete one-second bitrate window.
 - `sfu/crates/sfu-control/tests`: the NDJSON control server against a real engine over TCP.
 - `signaling/test`: protocol use cases, rooms, the SFU client against a scripted SFU (including replay after a restart), etcd registration against a real etcd (Docker, random port; skipped without Docker) and full WebSocket handshakes with gun clients.
 - `regionctl/tests`: the CLI against a temporary gitops checkout, a mock Cloudflare API and a mock gateway.
