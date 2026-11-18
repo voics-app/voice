@@ -6,4 +6,4 @@ pre-push:
     lint:
       run: make lint
     unit-tests:
-      run: cd sfu && cargo test --lib --bins && cd ../regionctl && cargo test --lib --bins && cd ../signaling && MIX_ENV=test mix test
+      run: cd sfu && cargo test --lib --bins && cd ../regionctl && cargo test --lib --bins && cd ../prober && cargo test --workspace --locked && cd ../signaling && MIX_ENV=test mix test

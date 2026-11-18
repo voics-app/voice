@@ -7,6 +7,7 @@ Voics voice: the signaling service (Elixir), the SFU (Rust, [str0m](https://gith
 | voice-signaling | `signaling/` | `ghcr.io/discordy-voics/voice-signaling` | Voice WebSocket (`/voice`, port 4100), room registry, SFU control client, etcd discovery, drain |
 | voice-sfu | `sfu/` | `ghcr.io/discordy-voics/voice-sfu` | UDP media mux (port 50000), ICE-lite and DTLS-SRTP, audio and simulcast/SVC video forwarding, NDJSON control (`127.0.0.1:4101`) |
 | regionctl | `regionctl/` | none (release binary) | `add`, `list`, `drain`, `undrain` |
+| voice-prober | `prober/` | `ghcr.io/discordy-voics/voice-prober` | Independent synthetic WebSocket/ICE/DTLS/RTP observations, leased health results, metrics and exact-key blacklist commands |
 
 The design follows [How Discord handles two and a half million concurrent voice users using WebRTC](https://discord.com/blog/how-discord-handles-two-and-half-million-concurrent-voice-users-using-webrtc): one SFU per node, all channels of a guild on one node, signaling decoupled from media, and state rebuilt by replaying sessions when the SFU restarts. The wire contracts are the pinned interface **P8** of the master plan; see [ARCHITECTURE.md](ARCHITECTURE.md).
 
@@ -103,6 +104,15 @@ Names follow pinned interface P2. Configuration is read from the environment and
 signaling (port 4100) and the SFU (port 4102) both serve `GET /healthz`, `GET /readyz` and `GET /metrics` (Prometheus) and write JSON logs to stdout. Signaling is ready when the SFU control link is up and the node is registered in etcd.
 
 Signaling also serves `POST /internal/v1/drain`, `POST /internal/v1/undrain` and `GET /internal/v1/status` (token protected). The gateway can alternatively drain a node by writing `/discordy/voice/drain/<node_id>` in etcd; signaling polls it every 3 seconds.
+
+## Active health probes
+
+The independently operated [voice-prober](prober/README.md) checks each node's advertised
+WebSocket and media route with two isolated synthetic peers. Its health records share an
+exclusive observer lease and every write compares the current node registration lease.
+It exports `/metrics` on port 4103. The daemon must be started explicitly; no deployment
+or `VOICE_REQUIRE_PROBE` activation is included here. See its README for configuration,
+blacklist commands, acceptance tests and the distinction between media health and allocation.
 
 ## regionctl
 

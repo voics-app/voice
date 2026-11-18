@@ -87,6 +87,16 @@ Both services follow Clean Architecture; dependencies point inwards.
 
 ## Regions
 
+The separate Rust `prober/` workspace implements central ADR-0025. `probe-domain` owns
+the health state machine; `probe-application` owns bounded observation cycles and the
+`HealthStore`, `NodeDiscovery`, `MediaProbe`, `Clock` and `ObservationSink` ports.
+`probe-infrastructure` implements etcd lease/CAS writes and paired str0m clients through
+the advertised WebSocket and UDP endpoints. `probe-interface` runs one timed task per
+registration and serves metrics; `bin/prober` is the composition root and operator CLI.
+Removing or replacing a registration cancels its media operation and revokes the old
+observer lease. A stuck adapter is bounded by the application timeout, and cannot hold
+up other nodes. See [the prober ADR](docs/adr/0002-independent-media-health-prober.md).
+
 Active media probes use a separate signing key and `purpose=probe` tokens bound to the current
 live registration lease. Signaling derives a private room from that lease and a per-run UUID;
 caller-provided server/channel IDs never select a user room. Probe sessions are audio-only and

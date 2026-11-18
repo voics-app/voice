@@ -1,0 +1,56 @@
+x-signaling: &signaling
+  build: ../../../signaling
+  labels:
+    voics.fixture: health-probe
+  depends_on: [etcd]
+
+x-signaling-environment: &signaling-environment
+  VOICE_REGION: health-fixture
+  VOICE_PUBLIC_IP: 127.0.0.1
+  ETCD_ENDPOINTS: etcd:2379
+  VOICE_TOKEN_SECRET: ${VOICE_TOKEN_SECRET:?set a disposable call key}
+  VOICE_PROBE_TOKEN_SECRET: ${VOICE_PROBE_TOKEN_SECRET:?set an independent disposable probe key}
+  INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:?set a disposable internal token}
+  VOICE_REQUIRE_PROBE: "true"
+  PORT: "4100"
+  DISCORDY_ENV: local
+
+x-sfu: &sfu
+  build: ../../../sfu
+  labels:
+    voics.fixture: health-probe
+  environment:
+    SFU_PUBLIC_IP: 127.0.0.1
+    SFU_CONTROL_BIND: 0.0.0.0:4101
+
+services:
+  etcd:
+    image: quay.io/coreos/etcd:v3.6.5
+    command: [etcd, --listen-client-urls=http://0.0.0.0:2379, --advertise-client-urls=http://etcd:2379]
+    ports: [127.0.0.1:52379:2379]
+    labels:
+      voics.fixture: health-probe
+  sfu-a:
+    <<: *sfu
+    ports: [127.0.0.1:55001:50000/udp]
+  sfu-b:
+    <<: *sfu
+    ports: [127.0.0.1:55002:50000/udp]
+  signaling-a:
+    <<: *signaling
+    ports: [127.0.0.1:54101:4100]
+    environment:
+      <<: *signaling-environment
+      VOICE_NODE_ID: health-a
+      VOICE_PUBLIC_WS_URL: ws://127.0.0.1:54101/voice
+      VOICE_UDP_PORT: "55001"
+      SFU_CONTROL_ADDR: sfu-a:4101
+  signaling-b:
+    <<: *signaling
+    ports: [127.0.0.1:54102:4100]
+    environment:
+      <<: *signaling-environment
+      VOICE_NODE_ID: health-b
+      VOICE_PUBLIC_WS_URL: ws://127.0.0.1:54102/voice
+      VOICE_UDP_PORT: "55002"
+      SFU_CONTROL_ADDR: sfu-b:4101
