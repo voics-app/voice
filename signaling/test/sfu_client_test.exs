@@ -122,6 +122,18 @@ defmodule DiscordyVoice.SfuClientTest do
     assert [_, %{"session_ids" => ["sess-1"]}] = commands(server, "sync")
   end
 
+  test "audio permission is retained when a session is replayed", %{server: server} do
+    {:ok, _} = SfuClient.create_session(@payload)
+    assert :ok = SfuClient.set_publish_audio("sess-1", false)
+    assert [%{"allowed" => false}] = commands(server, "set_publish_audio")
+    FakeSfuServer.forget_sessions(server)
+    FakeSfuServer.drop_connection(server)
+    wait_until(fn -> length(commands(server, "create_session")) == 2 end)
+    [_, replay] = commands(server, "create_session")
+    assert replay["can_publish_audio"] == false
+    assert {:error, :unknown_session} = SfuClient.set_publish_audio("missing", true)
+  end
+
   test "sessions closed before a reconnect are not replayed", %{server: server} do
     {:ok, _} = SfuClient.create_session(@payload)
     SfuClient.close_session("sess-1")

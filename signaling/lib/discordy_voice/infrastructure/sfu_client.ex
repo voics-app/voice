@@ -39,6 +39,10 @@ defmodule DiscordyVoice.Infrastructure.SfuClient do
   @impl DiscordyVoice.Application.Ports.SfuControl
   def set_sink_wants(session_id, wants), do: call({:set_sink_wants, session_id, wants})
 
+  @doc "Changes audio forwarding for a live session and records it for SFU replay."
+  @spec set_publish_audio(String.t(), boolean()) :: :ok | {:error, term()}
+  def set_publish_audio(session_id, allowed), do: call({:set_publish_audio, session_id, allowed})
+
   @doc "Whether the control socket is currently connected."
   @spec connected?(GenServer.server()) :: boolean()
   def connected?(server \\ __MODULE__), do: GenServer.call(server, :connected?)
@@ -82,6 +86,21 @@ defmodule DiscordyVoice.Infrastructure.SfuClient do
   def handle_call({:create_session, payload}, from, state) do
     {_req, state} = send_command(state, "create_session", payload, {:create, from, payload})
     {:noreply, state}
+  end
+
+  def handle_call({:set_publish_audio, session_id, allowed}, from, state) do
+    if Map.has_key?(state.sessions, session_id) do
+      {_req, state} =
+        send_command(
+          state,
+          "set_publish_audio",
+          %{session_id: session_id, allowed: allowed},
+          {:publish_audio, from, session_id, allowed}
+        )
+      {:noreply, state}
+    else
+      {:reply, {:error, :unknown_session}, state}
+    end
   end
 
   def handle_call({:set_sink_wants, session_id, wants}, _from, state) do
@@ -167,9 +186,30 @@ defmodule DiscordyVoice.Infrastructure.SfuClient do
     end
   end
 
+  defp handle_message(%{"evt" => "publish_audio_applied", "req" => req}, state) do
+    case Map.pop(state.pending, req) do
+      {{:publish_audio, from, session_id, allowed}, pending} ->
+        GenServer.reply(from, :ok)
+
+        sessions =
+          if Map.has_key?(state.sessions, session_id),
+            do: Map.update!(state.sessions, session_id, &Map.put(&1, :can_publish_audio, allowed)),
+            else: state.sessions
+
+        %{state | pending: pending, sessions: sessions}
+
+      {_other, pending} ->
+        %{state | pending: pending}
+    end
+  end
+
   defp handle_message(%{"evt" => "error", "req" => req} = reply, state) when is_binary(req) do
     case Map.pop(state.pending, req) do
       {{:create, from, _payload}, pending} ->
+        GenServer.reply(from, {:error, {:sfu, reply["code"], reply["message"]}})
+        %{state | pending: pending}
+
+      {{:publish_audio, from, _session_id, _allowed}, pending} ->
         GenServer.reply(from, {:error, {:sfu, reply["code"], reply["message"]}})
         %{state | pending: pending}
 
@@ -260,8 +300,11 @@ defmodule DiscordyVoice.Infrastructure.SfuClient do
     NodeLoad.put_sfu_connected(false)
 
     for {_req, pending} <- state.pending do
-      with {:create, from, _payload} <- pending,
-           do: GenServer.reply(from, {:error, :sfu_unavailable})
+      case pending do
+        {:create, from, _payload} -> GenServer.reply(from, {:error, :sfu_unavailable})
+        {:publish_audio, from, _id, _allowed} -> GenServer.reply(from, {:error, :sfu_unavailable})
+        _ -> :ok
+      end
     end
 
     schedule_reconnect(%{state | socket: nil, pending: %{}})
