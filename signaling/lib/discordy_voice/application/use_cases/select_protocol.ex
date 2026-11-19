@@ -58,6 +58,7 @@ defmodule DiscordyVoice.Application.UseCases.SelectProtocol do
        when is_integer(audio) and audio in 1..0xFFFFFFFF,
        do: %{
          audio: audio,
+         soundboard: valid_ssrc(ssrcs["soundboard"]),
          video: valid_ssrc(ssrcs["video"]),
          rtx: valid_ssrc(ssrcs["rtx"]),
          screen: valid_ssrc(ssrcs["screen"]),
@@ -83,7 +84,16 @@ defmodule DiscordyVoice.Application.UseCases.SelectProtocol do
 
     screen = if ssrcs.screen > 0, do: %{ssrc: ssrcs.screen, rtx_ssrc: ssrcs.screen_rtx}
 
-    %{session | ssrcs: %{plan | audio: ssrcs.audio, layers: layers, screen: screen}}
+    %{
+      session
+      | ssrcs: %{
+          plan
+          | audio: ssrcs.audio,
+            layers: layers,
+            screen: screen,
+            soundboard: if(ssrcs.soundboard > 0, do: ssrcs.soundboard)
+        }
+    }
   end
 
   # Browsers report "sha-256 AB:CD:.."; a bare colon-hex value is accepted too.
@@ -113,6 +123,7 @@ defmodule DiscordyVoice.Application.UseCases.SelectProtocol do
       ice_pwd: offer.ice_pwd,
       remote_fingerprint: offer.fingerprint,
       audio_ssrc: session.ssrcs.audio,
+      soundboard_ssrc: session.ssrcs.soundboard,
       codecs: Enum.map(negotiated.codecs, &wire_codec/1),
       video_layers: layers,
       screen: if(negotiated.video_codec, do: session.ssrcs.screen)

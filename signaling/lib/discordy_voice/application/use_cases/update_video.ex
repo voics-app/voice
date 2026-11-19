@@ -10,7 +10,7 @@ defmodule DiscordyVoice.Application.UseCases.UpdateVideo do
   alias DiscordyVoice.Domain.{SsrcPlan, VoiceSession}
 
   @spec run(VoiceSession.t(), term(), Deps.t()) :: :ok | {:close, atom()}
-  def run(%VoiceSession{video: false}, _d, _deps), do: :ok
+  def run(%VoiceSession{video: false, ssrcs: %{soundboard: nil}}, _d, _deps), do: :ok
 
   def run(%VoiceSession{} = session, d, deps) when is_map(d) do
     payload = payload(session, active_rids(d["streams"]), screen_active?(d["streams"]))
@@ -40,6 +40,7 @@ defmodule DiscordyVoice.Application.UseCases.UpdateVideo do
     %{
       user_id: session.user_id,
       audio_ssrc: plan.audio,
+      soundboard_ssrc: plan.soundboard,
       video_ssrc: if(any?, do: SsrcPlan.primary_video(plan), else: 0),
       rtx_ssrc: if(any?, do: SsrcPlan.primary_rtx(plan), else: 0),
       streams: camera ++ screen_stream(plan.screen, screen_active?)
