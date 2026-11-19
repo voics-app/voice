@@ -1,6 +1,6 @@
 ﻿# Soundboard media transport design
 
-Status: proposed for voice#10; not implemented.
+Status: proposed for voice#10; partial prototypes in draft PRs, not deployable.
 
 A soundboard clip must remain separately controllable at each receiver while a
 microphone continues to be audible. Mixing the clip into the microphone before
@@ -20,15 +20,21 @@ mixer. The client must fail closed if it cannot attach the media cryptor in an
 E2EE call. In particular it must never fall back to clear audio or mix into the
 microphone when the separate track cannot be established.
 
-The signaling and SFU contracts currently model exactly one audio SSRC per
-participant. A soundboard track therefore needs a separately identified SSRC,
+The baseline signaling and SFU contracts model one audio SSRC per participant.
+The draft adds an optional separately identified SSRC and defaults its SFU
+publication capability to denied. A production route also needs
 its own media section, publisher/subscriber mapping and lifecycle. Additive
 negotiation must preserve legacy clients: no receiver may silently treat the
 soundboard stream as microphone audio, and a publisher must show a failure when
 the call cannot safely support the feature. SSRCs must be nonzero, unique within
 the room and released on departure; track replacement and reconnect must not
 leave a stale receiver or bypass cryptor attachment. Call state changes, channel
-switches and permission revocation must stop an active clip.
+switches and permission revocation must stop an active clip. The authorized
+capability must require both voice publication and USE_SOUNDBOARD. It must be
+bound to the correct session and node, default false, and be revoked on a
+trusted, ordered live control path. The gateway-to-signaling control path is
+not implemented yet. Stage soundboard stays unavailable until that path and
+the SFU agree on the authoritative stage status.
 
 The CRUD and send API must authenticate the caller, enforce the guild and channel
 permissions and verify current channel membership server-side, including when a
@@ -53,4 +59,10 @@ accidentally unmute it when playing a sound.
 - Verify the normal upload, settings, panel, send and mute/volume routes in the
   desktop application, and mobile behavior where supported.
 
-This document records a proposed design, not an implementation or rollout.
+The API draft proposes canonical 48 kHz, mono, 16-bit PCM WAV assets of at
+most five seconds and eight sounds per guild. CRUD events contain metadata,
+not audio. A gateway membership lookup is proposed in gateway#67; connected
+alone does not establish permission to publish a sound.
+
+This document records a proposed design and partial prototypes, not a complete
+implementation or rollout.
