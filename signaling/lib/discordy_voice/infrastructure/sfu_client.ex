@@ -97,6 +97,7 @@ defmodule DiscordyVoice.Infrastructure.SfuClient do
           %{session_id: session_id, allowed: allowed},
           {:publish_audio, from, session_id, allowed}
         )
+
       {:noreply, state}
     else
       {:reply, {:error, :unknown_session}, state}
@@ -193,7 +194,8 @@ defmodule DiscordyVoice.Infrastructure.SfuClient do
 
         sessions =
           if Map.has_key?(state.sessions, session_id),
-            do: Map.update!(state.sessions, session_id, &Map.put(&1, :can_publish_audio, allowed)),
+            do:
+              Map.update!(state.sessions, session_id, &Map.put(&1, :can_publish_audio, allowed)),
             else: state.sessions
 
         %{state | pending: pending, sessions: sessions}
