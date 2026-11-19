@@ -229,7 +229,7 @@ defmodule DiscordyVoice.UseCasesTest do
 
       [{:reply, 4, _}] = Conn.send_frame(a, 1, offer)
       assert [{:create_session, %{audio_ssrc: 111, soundboard_ssrc: 222}}] = FakeSfu.calls()
-      drain_messages()
+      assert_receive {:pushed, :b, 12, %{audio_ssrc: 111, soundboard_ssrc: 222}}
       assert [] = Conn.send_frame(a, 12, %{"streams" => []})
       assert_receive {:pushed, :b, 12, %{audio_ssrc: 111, soundboard_ssrc: 222}}
       {_c, replies} = join(:c, "c", "ch-1", deps)

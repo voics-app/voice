@@ -5,6 +5,7 @@ defmodule DiscordyVoice.Application.UseCases.SelectProtocol do
   """
 
   alias DiscordyVoice.Application.{Deps, Settings}
+  alias DiscordyVoice.Application.UseCases.UpdateVideo
   alias DiscordyVoice.Contracts
   alias DiscordyVoice.Domain.{Codecs, VoiceSession}
 
@@ -21,6 +22,8 @@ defmodule DiscordyVoice.Application.UseCases.SelectProtocol do
           audio_codec: negotiated.audio_codec,
           video_codec: negotiated.video_codec
       }
+
+      announce_soundboard(session, deps)
 
       {:ok, session,
        [{:reply, Contracts.op(:session_description), description(session, local, deps)}]}
@@ -94,6 +97,15 @@ defmodule DiscordyVoice.Application.UseCases.SelectProtocol do
             soundboard: if(ssrcs.soundboard > 0, do: ssrcs.soundboard)
         }
     }
+  end
+
+  # Publish the accepted plan immediately, including for audio-only calls.
+  defp announce_soundboard(%VoiceSession{ssrcs: %{soundboard: nil}}, _deps), do: :ok
+
+  defp announce_soundboard(session, deps) do
+    payload = UpdateVideo.payload(session, MapSet.new(), false)
+    :ok = deps.rooms.put_video(session.channel_id, session.user_id, payload)
+    deps.rooms.broadcast(session.channel_id, session.user_id, Contracts.op(:video), payload)
   end
 
   # Browsers report "sha-256 AB:CD:.."; a bare colon-hex value is accepted too.
