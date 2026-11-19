@@ -47,6 +47,14 @@ impl MediaRouter for FakeRouter {
         }
     }
 
+    fn set_publish_video(&mut self, id: &SessionId, _allowed: bool) -> Result<(), RouterError> {
+        if self.opened.iter().any(|(known, _)| known == id) {
+            Ok(())
+        } else {
+            Err(RouterError::UnknownSession(id.clone()))
+        }
+    }
+
     fn set_sink_wants(&mut self, id: &SessionId, wants: SinkWants) -> Result<(), RouterError> {
         let known = self.opened.iter().any(|(s, _)| s == id);
         if self.known_only && !known {

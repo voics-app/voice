@@ -41,6 +41,13 @@ pub enum WireCommand {
         /// Whether to forward its audio.
         allowed: bool,
     },
+    /// Change whether a session may publish camera and screen video.
+    SetPublishVideo {
+        /// Session to update.
+        session_id: String,
+        /// Whether to forward its video.
+        allowed: bool,
+    },
     /// Reconcile after a control reconnect.
     Sync {
         /// Every session signaling believes is live.
@@ -74,6 +81,9 @@ pub struct WireSession {
     /// Whether audio is allowed; absent for older signaling versions.
     #[serde(default = "default_publish_audio")]
     pub can_publish_audio: bool,
+    /// Whether video is allowed; absent for older signaling versions.
+    #[serde(default = "default_publish_audio")]
+    pub can_publish_video: bool,
     /// Negotiated codecs.
     pub codecs: Vec<WireCodec>,
     /// Simulcast layers, ascending quality.
@@ -170,6 +180,13 @@ pub enum WireEvent {
     },
     /// Reply to `set_publish_audio`.
     PublishAudioApplied {
+        /// Correlation id.
+        req: Option<String>,
+        /// Session id.
+        session_id: String,
+    },
+    /// Reply to `set_publish_video`.
+    PublishVideoApplied {
         /// Correlation id.
         req: Option<String>,
         /// Session id.

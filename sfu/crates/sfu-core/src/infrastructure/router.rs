@@ -180,8 +180,10 @@ impl Str0mRouter {
                                 }
                                 Event::RtpPacket(packet) => {
                                     if let Some(rtp) = classify(id, peer, packet, self.start, now) {
-                                        if rtp.track == TrackKind::Audio
-                                            && !peer.spec.can_publish_audio
+                                        if (rtp.track == TrackKind::Audio
+                                            && !peer.spec.can_publish_audio)
+                                            || (rtp.track != TrackKind::Audio
+                                                && !peer.spec.can_publish_video)
                                         {
                                             continue;
                                         }
@@ -629,6 +631,15 @@ impl MediaRouter for Str0mRouter {
             .get_mut(id)
             .ok_or_else(|| RouterError::UnknownSession(id.clone()))?;
         peer.spec.can_publish_audio = allowed;
+        Ok(())
+    }
+
+    fn set_publish_video(&mut self, id: &SessionId, allowed: bool) -> Result<(), RouterError> {
+        let peer = self
+            .peers
+            .get_mut(id)
+            .ok_or_else(|| RouterError::UnknownSession(id.clone()))?;
+        peer.spec.can_publish_video = allowed;
         Ok(())
     }
 
