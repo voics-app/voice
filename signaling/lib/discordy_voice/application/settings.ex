@@ -31,6 +31,7 @@ defmodule DiscordyVoice.Application.Settings do
     :internal_token,
     :sfu_control,
     :http_port,
+    control_ip: nil,
     probe_token_secret: nil,
     probe_required: false,
     lan_ip: nil,
@@ -49,6 +50,7 @@ defmodule DiscordyVoice.Application.Settings do
           udp_port: 1..65_535,
           etcd_endpoints: [String.t()],
           token_secret: String.t(),
+          control_ip: String.t() | nil,
           probe_token_secret: String.t() | nil,
           probe_required: boolean(),
           internal_token: String.t(),
@@ -73,6 +75,7 @@ defmodule DiscordyVoice.Application.Settings do
       {:public_ws_url, ws_url(vars)},
       {:public_ip, ip(vars)},
       {:lan_ip, optional_ip(vars, "VOICE_LAN_IP")},
+      {:control_ip, control_ip(vars)},
       {:udp_port, port(vars, "VOICE_UDP_PORT", "50000")},
       {:etcd_endpoints, endpoints(vars)},
       {:token_secret, secret(vars, "VOICE_TOKEN_SECRET")},
@@ -148,6 +151,23 @@ defmodule DiscordyVoice.Application.Settings do
       value when value in [nil, "", "false", "0"] -> {:ok, false}
       value when value in ["true", "1"] -> {:ok, true}
       _ -> {:error, "#{name} must be true or false"}
+    end
+  end
+
+  # Control traffic must use a configured private node address, never the public websocket URL.
+  defp control_ip(vars) do
+    is_local = vars["DISCORDY_ENV"] in [nil, "", "local"]
+
+    case blank_to_nil(vars["VOICE_CONTROL_IP"]) do
+      nil -> {:ok, nil}
+      value ->
+        case :inet.parse_address(String.to_charlist(value)) do
+          {:ok, {10, _, _, _}} -> {:ok, value}
+          {:ok, {172, b, _, _}} when b in 16..31 -> {:ok, value}
+          {:ok, {192, 168, _, _}} -> {:ok, value}
+          {:ok, {127, _, _, _}} when is_local -> {:ok, value}
+          _ -> {:error, "VOICE_CONTROL_IP must be a private IPv4 address"}
+        end
     end
   end
 
