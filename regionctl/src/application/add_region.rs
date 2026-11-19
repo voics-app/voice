@@ -68,11 +68,17 @@ pub fn add_region(
 fn used_worker_ids(store: &dyn RegionStore) -> Result<Vec<u16>, AppError> {
     let mut used = Vec::new();
     for name in store.names()? {
-        if let Some(overlay) = store.read_overlay(&name)?
-            && let Ok(region) = parse_overlay(&name, &overlay)
-        {
-            used.push(region.worker_id);
-        }
+        let overlay = store.read_overlay(&name)?.ok_or_else(|| {
+            AppError::Store(format!(
+                "region `{name}` has no kustomization.yaml; cannot safely allocate a worker ID"
+            ))
+        })?;
+        let region = parse_overlay(&name, &overlay).map_err(|err| {
+            AppError::Store(format!(
+                "cannot read region `{name}` while allocating a worker ID: {err}"
+            ))
+        })?;
+        used.push(region.worker_id);
     }
     Ok(used)
 }
@@ -229,6 +235,25 @@ mod tests {
         }
         assert!(dns.records.borrow().is_empty());
         assert_eq!(store.overlays.borrow().len(), 1);
+    }
+
+    #[test]
+    fn malformed_existing_overlay_fails_before_dns_or_writes() {
+        let store = store_with_nl_home();
+        store.overlays.borrow_mut().insert(
+            "broken".into(),
+            "literals:\n  - SNOWFLAKE_WORKER_ID=193\n".into(),
+        );
+        let dns = MemoryDns::default();
+        let root = store.root.borrow().clone();
+
+        assert!(matches!(
+            add_region(&store, &dns, &request("eu-west")),
+            Err(AppError::Store(_))
+        ));
+        assert!(dns.records.borrow().is_empty());
+        assert_eq!(store.overlays.borrow().len(), 2);
+        assert_eq!(*store.root.borrow(), root);
     }
 
     #[test]
