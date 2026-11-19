@@ -126,11 +126,14 @@ defmodule DiscordyVoice.SfuClientTest do
     {:ok, _} = SfuClient.create_session(@payload)
     assert :ok = SfuClient.set_publish_audio("sess-1", false)
     assert [%{"allowed" => false}] = commands(server, "set_publish_audio")
+    assert :ok = SfuClient.set_publish_video("sess-1", false)
+    assert [%{"allowed" => false}] = commands(server, "set_publish_video")
     FakeSfuServer.forget_sessions(server)
     FakeSfuServer.drop_connection(server)
     wait_until(fn -> length(commands(server, "create_session")) == 2 end)
     [_, replay] = commands(server, "create_session")
     assert replay["can_publish_audio"] == false
+    assert replay["can_publish_video"] == false
     assert {:error, :unknown_session} = SfuClient.set_publish_audio("missing", true)
   end
 
