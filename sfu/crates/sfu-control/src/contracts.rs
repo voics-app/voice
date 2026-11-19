@@ -34,6 +34,13 @@ pub enum WireCommand {
         /// Publisher SSRC (as a string, JSON object key) to quality 0-100.
         wants: HashMap<String, u8>,
     },
+    /// Change whether a session may publish audio.
+    SetPublishAudio {
+        /// Session to update.
+        session_id: String,
+        /// Whether to forward its audio.
+        allowed: bool,
+    },
     /// Reconcile after a control reconnect.
     Sync {
         /// Every session signaling believes is live.
@@ -64,6 +71,9 @@ pub struct WireSession {
     pub local_pwd: Option<String>,
     /// SSRC of the publisher's audio.
     pub audio_ssrc: u32,
+    /// Whether audio is allowed; absent for older signaling versions.
+    #[serde(default = "default_publish_audio")]
+    pub can_publish_audio: bool,
     /// Negotiated codecs.
     pub codecs: Vec<WireCodec>,
     /// Simulcast layers, ascending quality.
@@ -72,6 +82,10 @@ pub struct WireSession {
     /// The screen share stream, when the client sends one beside the camera.
     #[serde(default)]
     pub screen: Option<WireStream>,
+}
+
+fn default_publish_audio() -> bool {
+    true
 }
 
 /// A single-layer stream (the screen share).
@@ -149,6 +163,13 @@ pub enum WireEvent {
     },
     /// Reply to `set_sink_wants`.
     SinkWantsApplied {
+        /// Correlation id.
+        req: Option<String>,
+        /// Session id.
+        session_id: String,
+    },
+    /// Reply to `set_publish_audio`.
+    PublishAudioApplied {
         /// Correlation id.
         req: Option<String>,
         /// Session id.

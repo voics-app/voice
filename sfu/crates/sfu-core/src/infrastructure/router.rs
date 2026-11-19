@@ -180,6 +180,11 @@ impl Str0mRouter {
                                 }
                                 Event::RtpPacket(packet) => {
                                     if let Some(rtp) = classify(id, peer, packet, self.start, now) {
+                                        if rtp.track == TrackKind::Audio
+                                            && !peer.spec.can_publish_audio
+                                        {
+                                            continue;
+                                        }
                                         if record_inbound(
                                             id,
                                             peer,
@@ -616,6 +621,15 @@ impl MediaRouter for Str0mRouter {
             self.refresh_viewers(other);
         }
         info!(session = %id, "session closed");
+    }
+
+    fn set_publish_audio(&mut self, id: &SessionId, allowed: bool) -> Result<(), RouterError> {
+        let peer = self
+            .peers
+            .get_mut(id)
+            .ok_or_else(|| RouterError::UnknownSession(id.clone()))?;
+        peer.spec.can_publish_audio = allowed;
+        Ok(())
     }
 
     fn set_sink_wants(&mut self, id: &SessionId, wants: SinkWants) -> Result<(), RouterError> {

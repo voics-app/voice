@@ -42,6 +42,13 @@ pub fn to_command(request: Request) -> Result<Command, MappingError> {
                 wants,
             })
         }
+        WireCommand::SetPublishAudio {
+            session_id,
+            allowed,
+        } => Ok(Command::SetPublishAudio {
+            session_id: session_id.as_str().into(),
+            allowed,
+        }),
         WireCommand::Sync { session_ids } => Ok(Command::Sync(
             session_ids
                 .iter()
@@ -57,6 +64,7 @@ pub fn session_of(command: &Command) -> Option<String> {
         Command::CreateSession(spec) => Some(spec.id.0.clone()),
         Command::CloseSession(id) => Some(id.0.clone()),
         Command::SetSinkWants { session_id, .. } => Some(session_id.0.clone()),
+        Command::SetPublishAudio { session_id, .. } => Some(session_id.0.clone()),
         Command::Sync(_) => None,
     }
 }
@@ -104,6 +112,7 @@ fn to_spec(session: WireSession) -> Result<SessionSpec, MappingError> {
         local_ice,
         codecs,
         audio_ssrc: session.audio_ssrc,
+        can_publish_audio: session.can_publish_audio,
         video_layers: session
             .video_layers
             .into_iter()
@@ -140,6 +149,7 @@ pub fn reply_for(req: Option<String>, session: Option<String>, outcome: Outcome)
             existed,
         },
         Outcome::WantsApplied => WireEvent::SinkWantsApplied { req, session_id },
+        Outcome::PublishAudioApplied => WireEvent::PublishAudioApplied { req, session_id },
         Outcome::Synced(missing) => WireEvent::Synced {
             req,
             missing: missing.into_iter().map(|s| s.0).collect(),

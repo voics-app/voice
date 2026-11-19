@@ -131,3 +131,68 @@ async fn two_clients_exchange_audio_through_the_sfu() {
     speakers.dedup();
     assert_eq!(speakers, vec!["alice".to_owned(), "bob".to_owned()]);
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn audio_publish_permission_blocks_and_restores_media() {
+    let handle = start_engine().await;
+    let sfu_addr = handle.local_addr();
+    let mut alice = Client::new(ALICE_AUDIO, vec![]);
+    let mut bob = Client::new(BOB_AUDIO, vec![]);
+    let mut alice_spec = alice.session_spec("alice", "room-stage");
+    alice_spec.can_publish_audio = false;
+    let alice_sfu = create(&handle, alice_spec).await;
+    let bob_sfu = create(&handle, bob.session_spec("bob", "room-stage")).await;
+    alice.connect(&alice_sfu, sfu_addr, &[BOB_AUDIO], &[]);
+    bob.connect(&bob_sfu, sfu_addr, &[ALICE_AUDIO], &[]);
+    let (ready_tx, ready_rx) = tokio::sync::oneshot::channel();
+    let (resume_tx, resume_rx) = std::sync::mpsc::channel();
+    let clients = tokio::task::spawn_blocking(move || {
+        let deadline = Instant::now() + Duration::from_secs(15);
+        while Instant::now() < deadline && !(alice.connected && bob.connected) {
+            alice.pump();
+            bob.pump();
+            std::thread::sleep(Duration::from_millis(1));
+        }
+        assert!(alice.connected && bob.connected);
+        let start = Instant::now();
+        while start.elapsed() < Duration::from_millis(900) {
+            alice.pump();
+            bob.pump();
+            alice.send_audio(&[0xA0, 1, 2, 3, 4]);
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        assert!(
+            bob.received_from(ALICE_AUDIO).is_empty(),
+            "suppressed audio leaked"
+        );
+        ready_tx.send(()).unwrap();
+        resume_rx.recv_timeout(Duration::from_secs(5)).unwrap();
+        let start = Instant::now();
+        while start.elapsed() < Duration::from_secs(3) {
+            alice.pump();
+            bob.pump();
+            alice.send_audio(&[0xA0, 1, 2, 3, 4]);
+            if !bob.received_from(ALICE_AUDIO).is_empty() {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        assert!(
+            !bob.received_from(ALICE_AUDIO).is_empty(),
+            "promoted speaker remained muted"
+        );
+    });
+    ready_rx.await.unwrap();
+    assert_eq!(
+        handle
+            .execute(Command::SetPublishAudio {
+                session_id: "alice".into(),
+                allowed: true
+            })
+            .await
+            .unwrap(),
+        Outcome::PublishAudioApplied
+    );
+    resume_tx.send(()).unwrap();
+    clients.await.unwrap();
+}

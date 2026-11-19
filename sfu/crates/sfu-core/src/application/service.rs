@@ -24,6 +24,13 @@ pub enum Command {
         /// Publisher SSRC to quality.
         wants: Vec<(u32, u8)>,
     },
+    /// Change audio forwarding permission.
+    SetPublishAudio {
+        /// Session to update.
+        session_id: SessionId,
+        /// Whether publishing is allowed.
+        allowed: bool,
+    },
     /// Reconcile sessions after a control reconnect.
     Sync(Vec<SessionId>),
 }
@@ -37,6 +44,8 @@ pub enum Outcome {
     Closed(bool),
     /// Wants applied.
     WantsApplied,
+    /// Audio publishing permission applied.
+    PublishAudioApplied,
     /// Sessions to replay.
     Synced(Vec<SessionId>),
 }
@@ -76,6 +85,14 @@ impl<R: MediaRouter, P: EventPublisher> SfuService<R, P> {
             Command::SetSinkWants { session_id, wants } => {
                 set_sink_wants(&mut self.router, &session_id, wants).map(|()| Outcome::WantsApplied)
             }
+            Command::SetPublishAudio {
+                session_id,
+                allowed,
+            } => self
+                .router
+                .set_publish_audio(&session_id, allowed)
+                .map(|()| Outcome::PublishAudioApplied)
+                .map_err(Into::into),
             Command::Sync(known) => Ok(Outcome::Synced(sync_sessions(
                 &mut self.router,
                 &mut self.rooms,

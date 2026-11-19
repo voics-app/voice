@@ -92,6 +92,8 @@ pub struct SessionSpec {
     pub codecs: Vec<CodecSpec>,
     /// SSRC of the publisher's audio.
     pub audio_ssrc: u32,
+    /// Whether audio from this session may be forwarded.
+    pub can_publish_audio: bool,
     /// Video layers, ascending quality. Empty when the client does not send video.
     pub video_layers: Vec<VideoLayer>,
     /// The publisher's screen share: a separate single-layer stream beside the camera, forwarded
@@ -276,6 +278,7 @@ pub(crate) mod fixtures {
                 },
             ],
             audio_ssrc,
+            can_publish_audio: true,
             video_layers: vec![
                 VideoLayer {
                     rid: "q".into(),
