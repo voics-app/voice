@@ -639,7 +639,28 @@ impl MediaRouter for Str0mRouter {
             .peers
             .get_mut(id)
             .ok_or_else(|| RouterError::UnknownSession(id.clone()))?;
+        let resumed = allowed && !peer.spec.can_publish_video;
         peer.spec.can_publish_video = allowed;
+        let ssrcs: Vec<u32> = if resumed {
+            peer.spec
+                .video_layers
+                .iter()
+                .map(|layer| layer.ssrc)
+                .chain(peer.spec.screen.iter().map(|screen| screen.ssrc))
+                .collect()
+        } else {
+            Vec::new()
+        };
+        for ssrc in ssrcs {
+            self.request_keyframe(
+                KeyframeNeed {
+                    publisher: id.clone(),
+                    ssrc,
+                },
+                KeyframeRequestKind::Pli,
+                Instant::now(),
+            );
+        }
         Ok(())
     }
 
