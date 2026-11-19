@@ -94,6 +94,8 @@ pub struct SessionSpec {
     pub audio_ssrc: u32,
     /// Optional separately controlled soundboard audio.
     pub soundboard_ssrc: Option<u32>,
+    /// Server-authorized soundboard publication, false until explicitly granted.
+    pub can_publish_soundboard: bool,
     /// Video layers, ascending quality. Empty when the client does not send video.
     pub video_layers: Vec<VideoLayer>,
     /// The publisher's screen share: a separate single-layer stream beside the camera, forwarded
@@ -280,6 +282,7 @@ pub(crate) mod fixtures {
             ],
             audio_ssrc,
             soundboard_ssrc: None,
+            can_publish_soundboard: false,
             video_layers: vec![
                 VideoLayer {
                     rid: "q".into(),
