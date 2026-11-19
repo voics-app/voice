@@ -104,6 +104,7 @@ fn to_spec(session: WireSession) -> Result<SessionSpec, MappingError> {
         local_ice,
         codecs,
         audio_ssrc: session.audio_ssrc,
+        soundboard_ssrc: session.soundboard_ssrc,
         video_layers: session
             .video_layers
             .into_iter()

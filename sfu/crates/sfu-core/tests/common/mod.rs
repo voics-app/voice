@@ -126,6 +126,7 @@ impl Client {
                 },
             ],
             audio_ssrc: self.audio_ssrc,
+            soundboard_ssrc: None,
             video_layers: self.video_layers.clone(),
             screen: self.screen.clone(),
         }

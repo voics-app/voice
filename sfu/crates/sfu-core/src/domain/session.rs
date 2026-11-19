@@ -92,6 +92,8 @@ pub struct SessionSpec {
     pub codecs: Vec<CodecSpec>,
     /// SSRC of the publisher's audio.
     pub audio_ssrc: u32,
+    /// Optional separately controlled soundboard audio.
+    pub soundboard_ssrc: Option<u32>,
     /// Video layers, ascending quality. Empty when the client does not send video.
     pub video_layers: Vec<VideoLayer>,
     /// The publisher's screen share: a separate single-layer stream beside the camera, forwarded
@@ -210,6 +212,7 @@ impl SessionSpec {
 
     fn all_ssrcs(&self) -> impl Iterator<Item = u32> + '_ {
         std::iter::once(self.audio_ssrc)
+            .chain(self.soundboard_ssrc)
             .chain(self.video_layers.iter().flat_map(|l| [l.ssrc, l.rtx_ssrc]))
             .chain(self.screen.iter().map(|s| s.ssrc))
             .chain(
@@ -276,6 +279,7 @@ pub(crate) mod fixtures {
                 },
             ],
             audio_ssrc,
+            soundboard_ssrc: None,
             video_layers: vec![
                 VideoLayer {
                     rid: "q".into(),
@@ -347,6 +351,17 @@ mod tests {
             s.validate(),
             Err(SessionSpecError::Duplicate("payload type"))
         );
+    }
+
+    #[test]
+    fn soundboard_ssrc_must_be_unique_and_nonzero() {
+        let mut s = spec("s1", "r", 100);
+        s.soundboard_ssrc = Some(100);
+        assert_eq!(s.validate(), Err(SessionSpecError::Duplicate("ssrc")));
+        s.soundboard_ssrc = Some(0);
+        assert_eq!(s.validate(), Err(SessionSpecError::ZeroSsrc));
+        s.soundboard_ssrc = Some(999);
+        assert_eq!(s.validate(), Ok(()));
     }
 
     #[test]

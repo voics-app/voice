@@ -698,6 +698,7 @@ fn record_inbound(
                 });
             }
         }
+        TrackKind::Soundboard => {}
         TrackKind::VideoLayer(index) => {
             if let Some(meter) = peer.layer_meters.get_mut(index) {
                 let was_inactive = meter.estimate_bps(rtp.arrival_us) == 0;
