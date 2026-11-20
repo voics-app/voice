@@ -39,10 +39,12 @@ defmodule DiscordyVoice.Infrastructure.SfuClient do
   @impl DiscordyVoice.Application.Ports.SfuControl
   def set_sink_wants(session_id, wants), do: call({:set_sink_wants, session_id, wants})
 
+  @impl DiscordyVoice.Application.Ports.SfuControl
   @doc "Changes audio forwarding for a live session and records it for SFU replay."
   @spec set_publish_audio(String.t(), boolean()) :: :ok | {:error, term()}
   def set_publish_audio(session_id, allowed), do: call({:set_publish_audio, session_id, allowed})
 
+  @impl DiscordyVoice.Application.Ports.SfuControl
   @doc "Changes camera and screen forwarding for a live session."
   @spec set_publish_video(String.t(), boolean()) :: :ok | {:error, term()}
   def set_publish_video(session_id, allowed), do: call({:set_publish_video, session_id, allowed})

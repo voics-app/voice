@@ -243,6 +243,26 @@ defmodule DiscordyVoice.WebsocketTest do
     assert {404, _} = http_get(port, "/nope")
   end
 
+  test "node-bound revocation requires the token and current registration lease", %{port: port, sfu: sfu} do
+    payload = %{
+      session_id: "sess-revoke", room_id: "room", user_id: "u", ice_ufrag: "clientUfrag",
+      ice_pwd: "clientIcePasswordClientIcePwd", remote_fingerprint: "sha-256 AB:CD",
+      audio_ssrc: 10, codecs: [%{name: "opus", type: "audio", priority: 1, payload_type: 111}],
+      video_layers: []
+    }
+    assert {:ok, _} = SfuClient.create_session(payload)
+    path = "/internal/v1/sessions/sess-revoke/revoke"
+    headers = [{"x-internal-token", "internal-secret"}, {"x-voice-node-id", "node-1"}, {"x-voice-registration-lease", "1"}]
+    assert {403, _} = http_post(port, path, [])
+    assert {403, _} = http_post(port, path, List.keyreplace(headers, "x-voice-registration-lease", 0, {"x-voice-registration-lease", "2"}))
+    assert {200, body} = http_post(port, path, headers)
+    assert %{"revoked" => true} = Jason.decode!(body)
+    commands = FakeSfuServer.received(sfu)
+    assert Enum.any?(commands, &match?(%{"cmd" => "set_publish_audio", "allowed" => false, "session_id" => "sess-revoke"}, &1))
+    assert Enum.any?(commands, &match?(%{"cmd" => "set_publish_video", "allowed" => false, "session_id" => "sess-revoke"}, &1))
+    assert {503, _} = http_post(port, "/internal/v1/sessions/missing/revoke", headers)
+  end
+
   test "internal drain API requires the internal token", %{port: port} do
     assert {401, _} = http_post(port, "/internal/v1/drain", [])
     assert {401, _} = http_post(port, "/internal/v1/drain", [{"x-internal-token", "wrong"}])
