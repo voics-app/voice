@@ -56,6 +56,23 @@ pub fn to_command(request: Request) -> Result<Command, MappingError> {
             session_id: session_id.as_str().into(),
             allowed,
         }),
+        WireCommand::SetPublishPermissions {
+            session_id,
+            revision,
+            expires_at,
+            can_publish_audio,
+            can_publish_video,
+            can_publish_soundboard,
+        } => Ok(Command::SetPublishPermissions {
+            session_id: session_id.as_str().into(),
+            update: sfu_core::domain::permission_lease::PermissionUpdate {
+                revision,
+                expires_at,
+                can_publish_audio,
+                can_publish_video,
+                can_publish_soundboard,
+            },
+        }),
         WireCommand::Sync { session_ids } => Ok(Command::Sync(
             session_ids
                 .iter()
@@ -73,6 +90,7 @@ pub fn session_of(command: &Command) -> Option<String> {
         Command::SetSinkWants { session_id, .. } => Some(session_id.0.clone()),
         Command::SetPublishAudio { session_id, .. } => Some(session_id.0.clone()),
         Command::SetPublishVideo { session_id, .. } => Some(session_id.0.clone()),
+        Command::SetPublishPermissions { session_id, .. } => Some(session_id.0.clone()),
         Command::Sync(_) => None,
     }
 }
@@ -122,6 +140,7 @@ fn to_spec(session: WireSession) -> Result<SessionSpec, MappingError> {
         audio_ssrc: session.audio_ssrc,
         can_publish_audio: session.can_publish_audio,
         can_publish_video: session.can_publish_video,
+        guarded_publish: session.guarded_publish,
         video_layers: session
             .video_layers
             .into_iter()
@@ -160,6 +179,9 @@ pub fn reply_for(req: Option<String>, session: Option<String>, outcome: Outcome)
         Outcome::WantsApplied => WireEvent::SinkWantsApplied { req, session_id },
         Outcome::PublishAudioApplied => WireEvent::PublishAudioApplied { req, session_id },
         Outcome::PublishVideoApplied => WireEvent::PublishVideoApplied { req, session_id },
+        Outcome::PublishPermissionsApplied => {
+            WireEvent::PublishPermissionsApplied { req, session_id }
+        }
         Outcome::Synced(missing) => WireEvent::Synced {
             req,
             missing: missing.into_iter().map(|s| s.0).collect(),

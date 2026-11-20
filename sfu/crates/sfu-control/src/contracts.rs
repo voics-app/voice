@@ -48,6 +48,21 @@ pub enum WireCommand {
         /// Whether to forward its video.
         allowed: bool,
     },
+    /// Atomically apply a bounded publish grant.
+    SetPublishPermissions {
+        /// Target session.
+        session_id: String,
+        /// Monotone revision.
+        revision: u64,
+        /// Unix milliseconds.
+        expires_at: u64,
+        /// Audio grant.
+        can_publish_audio: bool,
+        /// Video grant.
+        can_publish_video: bool,
+        /// Soundboard grant.
+        can_publish_soundboard: bool,
+    },
     /// Reconcile after a control reconnect.
     Sync {
         /// Every session signaling believes is live.
@@ -84,6 +99,9 @@ pub struct WireSession {
     /// Whether video is allowed; absent for older signaling versions.
     #[serde(default = "default_publish_audio")]
     pub can_publish_video: bool,
+    /// Require bounded atomic grants.
+    #[serde(default)]
+    pub guarded_publish: bool,
     /// Negotiated codecs.
     pub codecs: Vec<WireCodec>,
     /// Simulcast layers, ascending quality.
@@ -190,6 +208,13 @@ pub enum WireEvent {
         /// Correlation id.
         req: Option<String>,
         /// Session id.
+        session_id: String,
+    },
+    /// Reply after an atomic publish grant is applied.
+    PublishPermissionsApplied {
+        /// Correlation id.
+        req: Option<String>,
+        /// Target session.
         session_id: String,
     },
     /// Reply to `sync`.

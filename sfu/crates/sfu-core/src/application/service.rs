@@ -38,6 +38,13 @@ pub enum Command {
         /// Whether publishing is allowed.
         allowed: bool,
     },
+    /// Atomically replace the bounded publish grant.
+    SetPublishPermissions {
+        /// Target session.
+        session_id: SessionId,
+        /// Complete capability set.
+        update: crate::domain::permission_lease::PermissionUpdate,
+    },
     /// Reconcile sessions after a control reconnect.
     Sync(Vec<SessionId>),
 }
@@ -55,6 +62,8 @@ pub enum Outcome {
     PublishAudioApplied,
     /// Video publishing permission applied.
     PublishVideoApplied,
+    /// Atomic publishing permission applied.
+    PublishPermissionsApplied,
     /// Sessions to replay.
     Synced(Vec<SessionId>),
 }
@@ -109,6 +118,11 @@ impl<R: MediaRouter, P: EventPublisher> SfuService<R, P> {
                 .router
                 .set_publish_video(&session_id, allowed)
                 .map(|()| Outcome::PublishVideoApplied)
+                .map_err(Into::into),
+            Command::SetPublishPermissions { session_id, update } => self
+                .router
+                .set_publish_permissions(&session_id, update)
+                .map(|()| Outcome::PublishPermissionsApplied)
                 .map_err(Into::into),
             Command::Sync(known) => Ok(Outcome::Synced(sync_sessions(
                 &mut self.router,

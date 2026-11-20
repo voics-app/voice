@@ -45,6 +45,13 @@ pub trait MediaRouter {
     /// Changes camera and screen forwarding permission for a session.
     fn set_publish_video(&mut self, id: &SessionId, allowed: bool) -> Result<(), RouterError>;
 
+    /// Atomically applies a bounded capability update.
+    fn set_publish_permissions(
+        &mut self,
+        id: &SessionId,
+        update: crate::domain::permission_lease::PermissionUpdate,
+    ) -> Result<(), RouterError>;
+
     /// Applies MEDIA_SINK_WANTS for a subscriber.
     fn set_sink_wants(&mut self, id: &SessionId, wants: SinkWants) -> Result<(), RouterError>;
 }

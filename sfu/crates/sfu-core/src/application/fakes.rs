@@ -39,6 +39,18 @@ impl MediaRouter for FakeRouter {
         self.closed.push((id.clone(), remaining_peers.to_vec()));
     }
 
+    fn set_publish_permissions(
+        &mut self,
+        id: &SessionId,
+        _update: crate::domain::permission_lease::PermissionUpdate,
+    ) -> Result<(), RouterError> {
+        if self.opened.iter().any(|(known, _)| known == id) {
+            Ok(())
+        } else {
+            Err(RouterError::UnknownSession(id.clone()))
+        }
+    }
+
     fn set_publish_audio(&mut self, id: &SessionId, _allowed: bool) -> Result<(), RouterError> {
         if self.opened.iter().any(|(known, _)| known == id) {
             Ok(())
