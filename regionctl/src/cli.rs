@@ -282,7 +282,7 @@ fn plan_node(
     if !names.iter().any(|n| n == region) {
         return Err(format!("region `{region}` does not exist"));
     }
-    if names.iter().any(|n| n == node_id) {
+    if store.entry_exists(node_id).map_err(|e| e.to_string())? {
         return Err(format!("overlay `{node_id}` already exists"));
     }
     let mut used = Vec::new();

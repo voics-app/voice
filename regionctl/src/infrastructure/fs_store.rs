@@ -60,6 +60,15 @@ impl RegionStore for FsRegionStore {
         Ok(names)
     }
 
+    fn entry_exists(&self, name: &str) -> Result<bool, AppError> {
+        let path = self.regions_dir.join(name);
+        match fs::symlink_metadata(&path) {
+            Ok(_) => Ok(true),
+            Err(err) if err.kind() == ErrorKind::NotFound => Ok(false),
+            Err(err) => Err(store_error(&path, &err)),
+        }
+    }
+
     fn read_overlay(&self, name: &str) -> Result<Option<String>, AppError> {
         let path = self.overlay_path(name);
         match fs::read_to_string(&path) {
