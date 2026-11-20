@@ -252,6 +252,74 @@ fn add_creates_dns_overlay_and_registration() {
 }
 
 #[test]
+fn real_dev_aggregate_is_not_a_region_but_dev_worker_id_is_reserved() {
+    let api = start_mock();
+    let dir = gitops_checkout();
+    let regions = dir.path().join("regions");
+    fs::create_dir_all(regions.join("dev")).unwrap();
+    fs::write(regions.join("dev/kustomization.yaml"), "apiVersion: kustomize.config.k8s.io/v1beta1\nkind: Kustomization\nresources:\n  - ../common\n  - ../nl-dev\n").unwrap();
+    fs::create_dir_all(regions.join("nl-dev")).unwrap();
+    fs::write(
+        regions.join("nl-dev/kustomization.yaml"),
+        NL_HOME
+            .replace("nl-home-gen-serv", "nl-dev-discordy-dev")
+            .replace("SNOWFLAKE_WORKER_ID=192", "SNOWFLAKE_WORKER_ID=193"),
+    )
+    .unwrap();
+    let before = read(dir.path(), "regions/dev/kustomization.yaml");
+    let gitops = dir.path().to_str().unwrap();
+    assert_eq!(
+        run_with(
+            &[
+                "add",
+                "eu-west",
+                "--public-ip",
+                "198.51.100.4",
+                "--public-host",
+                "rtc-eu-west.voics.nl",
+                "--gitops-dir",
+                gitops
+            ],
+            &cf_env(&api)
+        ),
+        ExitCode::SUCCESS
+    );
+    assert!(
+        read(dir.path(), "regions/eu-west/kustomization.yaml").contains("SNOWFLAKE_WORKER_ID=194")
+    );
+    assert_eq!(read(dir.path(), "regions/dev/kustomization.yaml"), before);
+}
+
+#[test]
+fn missing_node_overlay_still_blocks_allocation_without_dns_or_writes() {
+    let api = start_mock();
+    let dir = gitops_checkout();
+    let regions = dir.path().join("regions");
+    fs::create_dir(regions.join("broken")).unwrap();
+    let root = read(dir.path(), "regions/kustomization.yaml");
+    let gitops = dir.path().to_str().unwrap();
+    assert_eq!(
+        run_with(
+            &[
+                "add",
+                "eu-west",
+                "--public-ip",
+                "198.51.100.4",
+                "--public-host",
+                "rtc-eu-west.voics.nl",
+                "--gitops-dir",
+                gitops
+            ],
+            &cf_env(&api)
+        ),
+        ExitCode::FAILURE
+    );
+    assert!(api.state.lock().unwrap().requests.is_empty());
+    assert!(!regions.join("eu-west").exists());
+    assert_eq!(read(dir.path(), "regions/kustomization.yaml"), root);
+}
+
+#[test]
 fn adding_twice_fails_without_touching_dns_again() {
     let api = start_mock();
     let dir = gitops_checkout();

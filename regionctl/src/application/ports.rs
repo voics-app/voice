@@ -6,7 +6,7 @@ use super::error::AppError;
 
 /// The gitops checkout: `regions/<name>/kustomization.yaml` and `regions/kustomization.yaml`.
 pub trait RegionStore {
-    /// Region directories (excluding `_template` and `common`), sorted.
+    /// Node overlay directories (excluding `_template`, `common` and the `dev` aggregate), sorted.
     fn names(&self) -> Result<Vec<String>, AppError>;
     /// The overlay of a region, if it exists.
     fn read_overlay(&self, name: &str) -> Result<Option<String>, AppError>;
