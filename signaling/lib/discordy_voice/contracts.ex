@@ -23,6 +23,7 @@ defmodule DiscordyVoice.Contracts do
   def op(:client_disconnect), do: 13
   def op(:media_sink_wants), do: 15
   def op(:stream_viewers), do: 40
+  def op(:publish_permissions), do: 41
   def op(:dave_prepare_transition), do: 21
   def op(:dave_execute_transition), do: 22
   def op(:dave_mls_external_sender), do: 25

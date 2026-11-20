@@ -90,6 +90,7 @@ defmodule DiscordyVoice.Application.UseCases.Identify do
             server_id: request.server_id,
             channel_id: channel_id,
             e2ee: claims["e2ee"] == true,
+            guarded_publish: claims["guarded_publish"] == true,
             video: request.video,
             ssrcs: plan
         }
