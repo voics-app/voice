@@ -79,10 +79,10 @@ defmodule DiscordyVoice.WebsocketTest do
     {status, body}
   end
 
-  defp http_post(port, path, headers) do
+  defp http_post(port, path, headers, payload \\ "") do
     {:ok, conn} = :gun.open(~c"127.0.0.1", port, %{protocols: [:http]})
     {:ok, _} = :gun.await_up(conn)
-    ref = :gun.post(conn, path, headers, "")
+    ref = :gun.post(conn, path, headers, payload)
     {:response, fin, status, _} = :gun.await(conn, ref)
     body = if fin == :nofin, do: elem(:gun.await_body(conn, ref), 1), else: ""
     :gun.close(conn)
@@ -261,6 +261,24 @@ defmodule DiscordyVoice.WebsocketTest do
     assert Enum.any?(commands, &match?(%{"cmd" => "set_publish_audio", "allowed" => false, "session_id" => "sess-revoke"}, &1))
     assert Enum.any?(commands, &match?(%{"cmd" => "set_publish_video", "allowed" => false, "session_id" => "sess-revoke"}, &1))
     assert {503, _} = http_post(port, "/internal/v1/sessions/missing/revoke", headers)
+  end
+
+  test "atomic guarded grant is acknowledged only after SFU application", %{port: port, sfu: sfu} do
+    payload = %{
+      session_id: "guarded", room_id: "room", user_id: "u", ice_ufrag: "clientUfrag",
+      ice_pwd: "clientIcePasswordClientIcePwd", remote_fingerprint: "sha-256 AB:CD",
+      audio_ssrc: 10, codecs: [%{name: "opus", type: "audio", priority: 1, payload_type: 111}],
+      video_layers: [], guarded_publish: true
+    }
+    assert {:ok, _} = SfuClient.create_session(payload)
+    path = "/internal/v1/sessions/guarded/publish-permissions"
+    headers = [{"x-internal-token", "internal-secret"}, {"x-voice-node-id", "node-1"}, {"x-voice-registration-lease", "1"}]
+    update = %{revision: 1, expires_at: System.system_time(:millisecond) + 5_000, can_publish_audio: true, can_publish_video: false, can_publish_soundboard: false}
+    assert {503, _} = http_post(port, path, [], Jason.encode!(update))
+    assert {200, body} = http_post(port, path, headers, Jason.encode!(update))
+    assert %{"applied" => true, "session_id" => "guarded", "revision" => 1} = Jason.decode!(body)
+    assert Enum.any?(FakeSfuServer.received(sfu), &match?(%{"cmd" => "set_publish_permissions", "session_id" => "guarded", "revision" => 1}, &1))
+    assert {503, _} = http_post(port, path, headers, Jason.encode!(%{update | can_publish_audio: false, can_publish_soundboard: true}))
   end
 
   test "internal drain API requires the internal token", %{port: port} do

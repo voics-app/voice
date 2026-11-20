@@ -49,6 +49,9 @@ defmodule DiscordyVoice.Infrastructure.SfuClient do
   @spec set_publish_video(String.t(), boolean()) :: :ok | {:error, term()}
   def set_publish_video(session_id, allowed), do: call({:set_publish_video, session_id, allowed})
 
+  @impl DiscordyVoice.Application.Ports.SfuControl
+  def set_publish_permissions(session_id, update), do: call({:set_publish_permissions, session_id, update})
+
   @doc "Whether the control socket is currently connected."
   @spec connected?(GenServer.server()) :: boolean()
   def connected?(server \\ __MODULE__), do: GenServer.call(server, :connected?)
@@ -123,6 +126,15 @@ defmodule DiscordyVoice.Infrastructure.SfuClient do
       {:noreply, state}
     else
       {:reply, {:error, :unknown_session}, state}
+    end
+  end
+
+  def handle_call({:set_publish_permissions, session_id, update}, from, state) do
+    case Map.get(state.sessions, session_id) do
+      %{guarded_publish: true} ->
+        {_req, state} = send_command(state, "set_publish_permissions", Map.put(update, :session_id, session_id), {:publish_permissions, from, session_id})
+        {:noreply, state}
+      _ -> {:reply, {:error, :unknown_or_unguarded_session}, state}
     end
   end
 
@@ -245,6 +257,15 @@ defmodule DiscordyVoice.Infrastructure.SfuClient do
     end
   end
 
+  defp handle_message(%{"evt" => "publish_permissions_applied", "req" => req, "session_id" => session_id}, state) do
+    case Map.pop(state.pending, req) do
+      {{:publish_permissions, from, ^session_id}, pending} ->
+        GenServer.reply(from, :ok)
+        %{state | pending: pending}
+      {_other, pending} -> %{state | pending: pending}
+    end
+  end
+
   defp handle_message(%{"evt" => "error", "req" => req} = reply, state) when is_binary(req) do
     case Map.pop(state.pending, req) do
       {{:create, from, _payload}, pending} ->
@@ -252,6 +273,10 @@ defmodule DiscordyVoice.Infrastructure.SfuClient do
         %{state | pending: pending}
 
       {{:publish_audio, from, _session_id, _allowed}, pending} ->
+        GenServer.reply(from, {:error, {:sfu, reply["code"], reply["message"]}})
+        %{state | pending: pending}
+
+      {{:publish_permissions, from, _session_id}, pending} ->
         GenServer.reply(from, {:error, {:sfu, reply["code"], reply["message"]}})
         %{state | pending: pending}
 
@@ -350,6 +375,7 @@ defmodule DiscordyVoice.Infrastructure.SfuClient do
         {:create, from, _payload} -> GenServer.reply(from, {:error, :sfu_unavailable})
         {:publish_audio, from, _id, _allowed} -> GenServer.reply(from, {:error, :sfu_unavailable})
         {:publish_video, from, _id, _allowed} -> GenServer.reply(from, {:error, :sfu_unavailable})
+        {:publish_permissions, from, _id} -> GenServer.reply(from, {:error, :sfu_unavailable})
         _ -> :ok
       end
     end

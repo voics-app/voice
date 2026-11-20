@@ -45,6 +45,25 @@ defmodule DiscordyVoice.Interface.Router do
     internal(conn, fn -> DrainControl.undrain() end)
   end
 
+  post "/internal/v1/sessions/:session_id/publish-permissions" do
+    deps = Deps.current()
+
+    with true <- authorized?(conn, deps.settings.internal_token),
+         [node_id] <- get_req_header(conn, "x-voice-node-id"),
+         true <- node_id == deps.settings.node_id,
+         [lease] <- get_req_header(conn, "x-voice-registration-lease"),
+         {:ok, ^lease} <- deps.registration.lease_id(),
+         {:ok, body, conn} <- read_body(conn, length: 4096),
+         {:ok, payload} <- Jason.decode(body),
+         {:ok, update} <- permission_update(payload),
+         :ok <- deps.sfu.set_publish_permissions(session_id, update),
+         {:ok, ^lease} <- deps.registration.lease_id() do
+      json(conn, 200, %{applied: true, session_id: session_id, revision: update.revision})
+    else
+      _ -> json(conn, 503, %{error: "permission_update_failed"})
+    end
+  end
+
   # Revoke-only until a leased, ordered grant protocol is ready. A stale registration cannot
   # operate on a replacement node. Both denials are attempted even when one command fails.
   post "/internal/v1/sessions/:session_id/revoke" do
@@ -94,6 +113,18 @@ defmodule DiscordyVoice.Interface.Router do
       _ -> false
     end
   end
+
+  defp permission_update(%{"revision" => revision, "expires_at" => expires_at,
+         "can_publish_audio" => audio, "can_publish_video" => video,
+         "can_publish_soundboard" => soundboard})
+       when is_integer(revision) and revision >= 0 and is_integer(expires_at) and expires_at > 0 and
+              is_boolean(audio) and is_boolean(video) and is_boolean(soundboard) and
+              (not soundboard or audio) do
+    {:ok, %{revision: revision, expires_at: expires_at, can_publish_audio: audio,
+      can_publish_video: video, can_publish_soundboard: soundboard}}
+  end
+
+  defp permission_update(_), do: {:error, :invalid_permissions}
 
   defp json(conn, status, body) do
     conn
