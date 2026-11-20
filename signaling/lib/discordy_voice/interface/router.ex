@@ -4,6 +4,7 @@ defmodule DiscordyVoice.Interface.Router do
   use Plug.Router
 
   alias DiscordyVoice.Application.Deps
+  alias DiscordyVoice.Contracts
   alias DiscordyVoice.Infrastructure.{DrainControl, NodeLoad, NodePresence, SfuClient}
   alias DiscordyVoice.Interface.VoiceSocket
 
@@ -56,8 +57,10 @@ defmodule DiscordyVoice.Interface.Router do
          {:ok, body, conn} <- read_body(conn, length: 4096),
          {:ok, payload} <- Jason.decode(body),
          {:ok, update} <- permission_update(payload),
+         recipients <- Registry.lookup(DiscordyVoice.SessionRegistry, session_id),
          :ok <- deps.sfu.set_publish_permissions(session_id, update),
          {:ok, ^lease} <- deps.registration.lease_id() do
+      announce_permissions(session_id, update, recipients)
       json(conn, 200, %{applied: true, session_id: session_id, revision: update.revision})
     else
       _ -> json(conn, 503, %{error: "permission_update_failed"})
@@ -113,6 +116,19 @@ defmodule DiscordyVoice.Interface.Router do
     case get_req_header(conn, "x-internal-token") do
       [given] -> byte_size(given) == byte_size(expected) and :crypto.hash_equals(given, expected)
       _ -> false
+    end
+  end
+
+  # Capture the original sockets before the SFU call. A reconnect during the call must not
+  # receive the old session's acknowledgement, even if it reuses the same session id.
+  defp announce_permissions(session_id, update, recipients) do
+    if update.expires_at > System.system_time(:millisecond) do
+      current = Registry.lookup(DiscordyVoice.SessionRegistry, session_id)
+      data = Map.put(update, :session_id, session_id)
+
+      for {pid, value} <- recipients, {pid, value} in current do
+        send(pid, {:push, Contracts.op(:publish_permissions), data})
+      end
     end
   end
 

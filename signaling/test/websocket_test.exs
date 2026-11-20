@@ -320,6 +320,7 @@ defmodule DiscordyVoice.WebsocketTest do
     }
 
     assert {:ok, _} = SfuClient.create_session(payload)
+    assert {:ok, _} = Registry.register(DiscordyVoice.SessionRegistry, "guarded", nil)
     path = "/internal/v1/sessions/guarded/publish-permissions"
 
     headers = [
@@ -337,8 +338,12 @@ defmodule DiscordyVoice.WebsocketTest do
     }
 
     assert {503, _} = http_post(port, path, [], Jason.encode!(update))
+    refute_receive {:push, 41, _}, 50
     assert {200, body} = http_post(port, path, headers, Jason.encode!(update))
     assert %{"applied" => true, "session_id" => "guarded", "revision" => 1} = Jason.decode!(body)
+
+    assert_receive {:push, 41, %{session_id: "guarded", revision: 1, can_publish_audio: true}},
+                   1_000
 
     assert Enum.any?(
              FakeSfuServer.received(sfu),
