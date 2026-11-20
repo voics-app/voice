@@ -46,6 +46,54 @@ must be enforced server-side as well as in the UI; malformed or excessive media
 must not reach unbounded decoders. A user muting their microphone must not
 accidentally unmute it when playing a sound.
 
+## Shared capability contract (proposed, not yet wired)
+
+The gateway is the authorization owner. It derives soundboard permission from
+current membership, channel `SPEAK` and `USE_SOUNDBOARD` permissions and, for
+stage channels, authoritative speaker status. The gateway and signaling node
+must bind every update to the gateway session, target node and that node's
+current registration lease. A single atomic capability update carries both
+`can_publish_audio`, `can_publish_video` and `can_publish_soundboard`, a monotonically increasing
+per-session revision, and `expires_at` in Unix milliseconds. Soundboard publication is
+allowed only while **both** bits are true and the grant is unexpired. Absence
+of the capability is denial; this differs intentionally from legacy microphone
+behavior. The update is authenticated with the existing internal service
+credential and routed to the lease-identified node's private control endpoint.
+
+The signaling node serializes updates per session and acknowledges only after
+the SFU confirms the whole update was applied. Equal-revision retries are
+idempotent only when their contents match; older or conflicting updates cannot
+restore rights. A revoke is applied before its acknowledgement. Unknown node,
+lease, session or expired update is rejected. A lost response is ambiguous: the
+caller must not assume a grant was applied. If the gateway cannot establish
+that a revoke took effect, it treats the session as unsafe and disconnects it
+where possible. A network partition cannot guarantee immediate revocation; the
+SFU denies publication when the bounded grant expires. Expiry is measured with a monotonic deadline
+at the enforcer, with an agreed maximum lifetime and clock-skew policy for any
+absolute timestamp. Reconnect, SFU restart and registration-lease replacement
+must start denied and must not replay an expired or old-lease grant. A fresh,
+authoritative grant is required before publishing resumes.
+
+The client must only enable playback after an authenticated node announcement
+confirms the capability has been applied and media encryption is ready when
+required. The API send authorization also checks current voice membership and
+both publication rights; a send authorization does not itself open the SFU
+gate. Permission, stage, membership, session and lease changes invalidate
+pending client fetch/decode, stop active playback and trigger a server-side
+revoke. A direct RTP sender cannot bypass this gate. The currently proposed
+membership lookup in gateway#67 reports only `connected`, so it cannot be used
+as proof of soundboard publication permission.
+
+The shared proposal is recorded in docs#215 (`specs/2026-11-20-stage-instances.md`).
+
+Contract tests must cover ordered grant, revoke and ACK, duplicate and stale
+revisions, expiry, lost ACK, node/lease mismatch, SFU replay and a concurrent
+revoke versus grant. Two real peers must demonstrate that soundboard packets
+stop on revoke while permitted microphone audio remains independent; stage
+listeners and clients without the capability never publish. The end-to-end
+client test must also prove receiver soundboard mute and gain do not alter voice,
+user mute covers both streams, and DAVE calls never fall back to clear media.
+
 ## Required verification before release
 
 - Exercise two actual clients through signaling and SFU in clear and DAVE calls;
