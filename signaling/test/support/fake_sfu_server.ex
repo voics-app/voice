@@ -118,6 +118,16 @@ defmodule DiscordyVoice.FakeSfuServer do
     state
   end
 
+  defp handle_command(%{"cmd" => "set_publish_audio", "req" => req, "session_id" => id}, state) do
+    reply(state.client, %{evt: "publish_audio_applied", req: req, session_id: id})
+    state
+  end
+
+  defp handle_command(%{"cmd" => "set_publish_video", "req" => req, "session_id" => id}, state) do
+    reply(state.client, %{evt: "publish_video_applied", req: req, session_id: id})
+    state
+  end
+
   defp reply(nil, _event), do: :ok
   defp reply(socket, event), do: :gen_tcp.send(socket, Jason.encode!(event) <> "\n")
 end

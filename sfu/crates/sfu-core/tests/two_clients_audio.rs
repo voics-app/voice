@@ -131,3 +131,329 @@ async fn two_clients_exchange_audio_through_the_sfu() {
     speakers.dedup();
     assert_eq!(speakers, vec!["alice".to_owned(), "bob".to_owned()]);
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn audio_publish_permission_blocks_and_restores_media() {
+    let handle = start_engine().await;
+    let sfu_addr = handle.local_addr();
+    let mut alice = Client::new(ALICE_AUDIO, vec![]);
+    let mut bob = Client::new(BOB_AUDIO, vec![]);
+    let mut alice_spec = alice.session_spec("alice", "room-stage");
+    alice_spec.can_publish_audio = false;
+    let alice_sfu = create(&handle, alice_spec).await;
+    let bob_sfu = create(&handle, bob.session_spec("bob", "room-stage")).await;
+    alice.connect(&alice_sfu, sfu_addr, &[BOB_AUDIO], &[]);
+    bob.connect(&bob_sfu, sfu_addr, &[ALICE_AUDIO], &[]);
+    let (ready_tx, ready_rx) = tokio::sync::oneshot::channel();
+    let (resume_tx, resume_rx) = std::sync::mpsc::channel();
+    let (promoted_tx, promoted_rx) = tokio::sync::oneshot::channel();
+    let (demoted_tx, demoted_rx) = std::sync::mpsc::channel();
+    let clients = tokio::task::spawn_blocking(move || {
+        let deadline = Instant::now() + Duration::from_secs(15);
+        while Instant::now() < deadline && !(alice.connected && bob.connected) {
+            alice.pump();
+            bob.pump();
+            std::thread::sleep(Duration::from_millis(1));
+        }
+        assert!(alice.connected && bob.connected);
+        let start = Instant::now();
+        while start.elapsed() < Duration::from_millis(900) {
+            alice.pump();
+            bob.pump();
+            alice.send_audio(&[0xA0, 1, 2, 3, 4]);
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        assert!(
+            bob.received_from(ALICE_AUDIO).is_empty(),
+            "suppressed audio leaked"
+        );
+        ready_tx.send(()).unwrap();
+        resume_rx.recv_timeout(Duration::from_secs(5)).unwrap();
+        let start = Instant::now();
+        while start.elapsed() < Duration::from_secs(3) {
+            alice.pump();
+            bob.pump();
+            alice.send_audio(&[0xA0, 1, 2, 3, 4]);
+            if !bob.received_from(ALICE_AUDIO).is_empty() {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        assert!(
+            !bob.received_from(ALICE_AUDIO).is_empty(),
+            "promoted speaker remained muted"
+        );
+        promoted_tx.send(()).unwrap();
+        demoted_rx.recv_timeout(Duration::from_secs(5)).unwrap();
+        let start = Instant::now();
+        while start.elapsed() < Duration::from_millis(900) {
+            alice.pump();
+            bob.pump();
+            alice.send_audio(&[0xC0, 9, 8, 7, 6]);
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        assert!(
+            bob.received_from(ALICE_AUDIO)
+                .iter()
+                .all(|packet| packet.payload[0] != 0xC0),
+            "revoked audio leaked"
+        );
+    });
+    ready_rx.await.unwrap();
+    assert_eq!(
+        handle
+            .execute(Command::SetPublishAudio {
+                session_id: "alice".into(),
+                allowed: true
+            })
+            .await
+            .unwrap(),
+        Outcome::PublishAudioApplied
+    );
+    resume_tx.send(()).unwrap();
+    promoted_rx.await.unwrap();
+    assert_eq!(
+        handle
+            .execute(Command::SetPublishAudio {
+                session_id: "alice".into(),
+                allowed: false
+            })
+            .await
+            .unwrap(),
+        Outcome::PublishAudioApplied
+    );
+    demoted_tx.send(()).unwrap();
+    clients.await.unwrap();
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn guarded_audio_grant_expires_on_real_udp() {
+    let handle = start_engine().await;
+    let sfu_addr = handle.local_addr();
+    let mut alice = Client::new(ALICE_AUDIO, vec![]);
+    let mut bob = Client::new(BOB_AUDIO, vec![]);
+    let mut alice_spec = alice.session_spec("alice", "room-stage");
+    alice_spec.can_publish_audio = false;
+    alice_spec.guarded_publish = true;
+    let alice_sfu = create(&handle, alice_spec).await;
+    let bob_sfu = create(&handle, bob.session_spec("bob", "room-stage")).await;
+    alice.connect(&alice_sfu, sfu_addr, &[BOB_AUDIO], &[]);
+    bob.connect(&bob_sfu, sfu_addr, &[ALICE_AUDIO], &[]);
+    let (ready_tx, ready_rx) = tokio::sync::oneshot::channel();
+    let (resume_tx, resume_rx) = std::sync::mpsc::channel();
+    let (promoted_tx, promoted_rx) = tokio::sync::oneshot::channel();
+    let (demoted_tx, demoted_rx) = std::sync::mpsc::channel();
+    let clients = tokio::task::spawn_blocking(move || {
+        let deadline = Instant::now() + Duration::from_secs(15);
+        while Instant::now() < deadline && !(alice.connected && bob.connected) {
+            alice.pump();
+            bob.pump();
+            std::thread::sleep(Duration::from_millis(1));
+        }
+        assert!(alice.connected && bob.connected);
+        let start = Instant::now();
+        while start.elapsed() < Duration::from_millis(900) {
+            alice.pump();
+            bob.pump();
+            alice.send_audio(&[0xA0, 1, 2, 3, 4]);
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        assert!(
+            bob.received_from(ALICE_AUDIO).is_empty(),
+            "suppressed audio leaked"
+        );
+        ready_tx.send(()).unwrap();
+        resume_rx.recv_timeout(Duration::from_secs(5)).unwrap();
+        let start = Instant::now();
+        while start.elapsed() < Duration::from_secs(3) {
+            alice.pump();
+            bob.pump();
+            alice.send_audio(&[0xA0, 1, 2, 3, 4]);
+            if !bob.received_from(ALICE_AUDIO).is_empty() {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        assert!(
+            !bob.received_from(ALICE_AUDIO).is_empty(),
+            "promoted speaker remained muted"
+        );
+        promoted_tx.send(()).unwrap();
+        demoted_rx.recv_timeout(Duration::from_secs(5)).unwrap();
+        let start = Instant::now();
+        while start.elapsed() < Duration::from_millis(900) {
+            alice.pump();
+            bob.pump();
+            alice.send_audio(&[0xC0, 9, 8, 7, 6]);
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        assert!(
+            bob.received_from(ALICE_AUDIO)
+                .iter()
+                .all(|packet| packet.payload[0] != 0xC0),
+            "revoked audio leaked"
+        );
+    });
+    ready_rx.await.unwrap();
+    let expires_at = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_millis() as u64
+        + 1500;
+    let update = sfu_core::domain::permission_lease::PermissionUpdate {
+        revision: 1,
+        expires_at,
+        can_publish_audio: true,
+        can_publish_video: false,
+        can_publish_soundboard: false,
+    };
+    assert_eq!(
+        handle
+            .execute(Command::SetPublishPermissions {
+                session_id: "alice".into(),
+                update: update.clone()
+            })
+            .await
+            .unwrap(),
+        Outcome::PublishPermissionsApplied
+    );
+    resume_tx.send(()).unwrap();
+    promoted_rx.await.unwrap();
+    tokio::time::sleep(Duration::from_millis(1600)).await;
+    assert!(
+        handle
+            .execute(Command::SetPublishPermissions {
+                session_id: "alice".into(),
+                update
+            })
+            .await
+            .is_err(),
+        "expired revision must not replay"
+    );
+    demoted_tx.send(()).unwrap();
+    clients.await.unwrap();
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn guarded_audio_atomic_revoke_on_real_udp() {
+    let handle = start_engine().await;
+    let sfu_addr = handle.local_addr();
+    let mut alice = Client::new(ALICE_AUDIO, vec![]);
+    let mut bob = Client::new(BOB_AUDIO, vec![]);
+    let mut alice_spec = alice.session_spec("alice", "room-stage");
+    alice_spec.can_publish_audio = false;
+    alice_spec.guarded_publish = true;
+    let alice_sfu = create(&handle, alice_spec).await;
+    let bob_sfu = create(&handle, bob.session_spec("bob", "room-stage")).await;
+    alice.connect(&alice_sfu, sfu_addr, &[BOB_AUDIO], &[]);
+    bob.connect(&bob_sfu, sfu_addr, &[ALICE_AUDIO], &[]);
+    let (ready_tx, ready_rx) = tokio::sync::oneshot::channel();
+    let (resume_tx, resume_rx) = std::sync::mpsc::channel();
+    let (promoted_tx, promoted_rx) = tokio::sync::oneshot::channel();
+    let (demoted_tx, demoted_rx) = std::sync::mpsc::channel();
+    let clients = tokio::task::spawn_blocking(move || {
+        let deadline = Instant::now() + Duration::from_secs(15);
+        while Instant::now() < deadline && !(alice.connected && bob.connected) {
+            alice.pump();
+            bob.pump();
+            std::thread::sleep(Duration::from_millis(1));
+        }
+        assert!(alice.connected && bob.connected);
+        let start = Instant::now();
+        while start.elapsed() < Duration::from_millis(900) {
+            alice.pump();
+            bob.pump();
+            alice.send_audio(&[0xA0, 1, 2, 3, 4]);
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        assert!(
+            bob.received_from(ALICE_AUDIO).is_empty(),
+            "suppressed audio leaked"
+        );
+        ready_tx.send(()).unwrap();
+        resume_rx.recv_timeout(Duration::from_secs(5)).unwrap();
+        let start = Instant::now();
+        while start.elapsed() < Duration::from_secs(3) {
+            alice.pump();
+            bob.pump();
+            alice.send_audio(&[0xA0, 1, 2, 3, 4]);
+            if !bob.received_from(ALICE_AUDIO).is_empty() {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        assert!(
+            !bob.received_from(ALICE_AUDIO).is_empty(),
+            "promoted speaker remained muted"
+        );
+        promoted_tx.send(()).unwrap();
+        demoted_rx.recv_timeout(Duration::from_secs(5)).unwrap();
+        let start = Instant::now();
+        while start.elapsed() < Duration::from_millis(900) {
+            alice.pump();
+            bob.pump();
+            alice.send_audio(&[0xC0, 9, 8, 7, 6]);
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        assert!(
+            bob.received_from(ALICE_AUDIO)
+                .iter()
+                .all(|packet| packet.payload[0] != 0xC0),
+            "revoked audio leaked"
+        );
+    });
+    ready_rx.await.unwrap();
+    let expires_at = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_millis() as u64
+        + 10000;
+    let update = sfu_core::domain::permission_lease::PermissionUpdate {
+        revision: 1,
+        expires_at,
+        can_publish_audio: true,
+        can_publish_video: false,
+        can_publish_soundboard: false,
+    };
+    assert_eq!(
+        handle
+            .execute(Command::SetPublishPermissions {
+                session_id: "alice".into(),
+                update: update.clone()
+            })
+            .await
+            .unwrap(),
+        Outcome::PublishPermissionsApplied
+    );
+    resume_tx.send(()).unwrap();
+    promoted_rx.await.unwrap();
+    let revoked = sfu_core::domain::permission_lease::PermissionUpdate {
+        revision: 2,
+        can_publish_audio: false,
+        can_publish_video: false,
+        can_publish_soundboard: false,
+        ..update.clone()
+    };
+    assert_eq!(
+        handle
+            .execute(Command::SetPublishPermissions {
+                session_id: "alice".into(),
+                update: revoked
+            })
+            .await
+            .unwrap(),
+        Outcome::PublishPermissionsApplied
+    );
+    assert!(
+        handle
+            .execute(Command::SetPublishPermissions {
+                session_id: "alice".into(),
+                update
+            })
+            .await
+            .is_err(),
+        "stale revision must not replay"
+    );
+    demoted_tx.send(()).unwrap();
+    clients.await.unwrap();
+}

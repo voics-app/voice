@@ -9,6 +9,9 @@ defmodule DiscordyVoice.Domain.NodeStatus do
     :public_ip,
     :udp_port,
     :version,
+    :control_ip,
+    :control_port,
+    :registration_lease,
     users: 0,
     cpu_pct: 0.0,
     egress_bps: 0,
@@ -21,7 +24,7 @@ defmodule DiscordyVoice.Domain.NodeStatus do
   @doc "Encodes the P8 value `{node_id, region, ws_url, public_ip, udp_port, users, cpu_pct, egress_bps, draining, version}`."
   @spec to_json(t()) :: binary()
   def to_json(%__MODULE__{} = status) do
-    Jason.encode!(%{
+    fields = %{
       node_id: status.node_id,
       region: status.region,
       ws_url: status.ws_url,
@@ -33,6 +36,15 @@ defmodule DiscordyVoice.Domain.NodeStatus do
       draining: status.draining,
       probe_required: status.probe_required,
       version: status.version
-    })
+    }
+
+    fields =
+      if status.control_ip do
+        Map.merge(fields, %{control_ip: status.control_ip, control_port: status.control_port, registration_lease: status.registration_lease})
+      else
+        fields
+      end
+
+    Jason.encode!(fields)
   end
 end

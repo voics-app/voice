@@ -45,6 +45,25 @@ defmodule DiscordyVoice.Interface.Router do
     internal(conn, fn -> DrainControl.undrain() end)
   end
 
+  # Revoke-only until a leased, ordered grant protocol is ready. A stale registration cannot
+  # operate on a replacement node. Both denials are attempted even when one command fails.
+  post "/internal/v1/sessions/:session_id/revoke" do
+    deps = Deps.current()
+    with true <- authorized?(conn, deps.settings.internal_token),
+         [node_id] <- get_req_header(conn, "x-voice-node-id"),
+         true <- node_id == deps.settings.node_id,
+         [lease] <- get_req_header(conn, "x-voice-registration-lease"),
+         {:ok, ^lease} <- deps.registration.lease_id() do
+      audio = deps.sfu.set_publish_audio(session_id, false)
+      video = deps.sfu.set_publish_video(session_id, false)
+      if audio == :ok and video == :ok,
+        do: json(conn, 200, %{revoked: true}),
+        else: json(conn, 503, %{error: "sfu_unavailable"})
+    else
+      _ -> json(conn, 403, %{error: "invalid_control_identity"})
+    end
+  end
+
   get "/internal/v1/status" do
     internal(conn, fn -> :ok end)
   end
@@ -56,9 +75,7 @@ defmodule DiscordyVoice.Interface.Router do
   defp internal(conn, action) do
     expected = Deps.current().settings.internal_token
 
-    with [given] <- get_req_header(conn, "x-internal-token"),
-         true <- byte_size(given) == byte_size(expected),
-         true <- :crypto.hash_equals(given, expected) do
+    if authorized?(conn, expected) do
       action.()
 
       json(conn, 200, %{
@@ -67,7 +84,14 @@ defmodule DiscordyVoice.Interface.Router do
         rooms: NodeLoad.rooms()
       })
     else
-      _ -> json(conn, 401, %{error: "unauthorized"})
+      json(conn, 401, %{error: "unauthorized"})
+    end
+  end
+
+  defp authorized?(conn, expected) do
+    case get_req_header(conn, "x-internal-token") do
+      [given] -> byte_size(given) == byte_size(expected) and :crypto.hash_equals(given, expected)
+      _ -> false
     end
   end
 

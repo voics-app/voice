@@ -167,6 +167,12 @@ defmodule DiscordyVoice.FakeSfu do
   def close_session(session_id), do: record({:close_session, session_id})
 
   @impl true
+  def set_publish_audio(session_id, allowed), do: record({:set_publish_audio, session_id, allowed})
+
+  @impl true
+  def set_publish_video(session_id, allowed), do: record({:set_publish_video, session_id, allowed})
+
+  @impl true
   def set_sink_wants(session_id, wants) do
     record({:set_sink_wants, session_id, wants})
     :ok

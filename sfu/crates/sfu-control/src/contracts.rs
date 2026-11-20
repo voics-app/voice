@@ -34,6 +34,35 @@ pub enum WireCommand {
         /// Publisher SSRC (as a string, JSON object key) to quality 0-100.
         wants: HashMap<String, u8>,
     },
+    /// Change whether a session may publish audio.
+    SetPublishAudio {
+        /// Session to update.
+        session_id: String,
+        /// Whether to forward its audio.
+        allowed: bool,
+    },
+    /// Change whether a session may publish camera and screen video.
+    SetPublishVideo {
+        /// Session to update.
+        session_id: String,
+        /// Whether to forward its video.
+        allowed: bool,
+    },
+    /// Atomically apply a bounded publish grant.
+    SetPublishPermissions {
+        /// Target session.
+        session_id: String,
+        /// Monotone revision.
+        revision: u64,
+        /// Unix milliseconds.
+        expires_at: u64,
+        /// Audio grant.
+        can_publish_audio: bool,
+        /// Video grant.
+        can_publish_video: bool,
+        /// Soundboard grant.
+        can_publish_soundboard: bool,
+    },
     /// Reconcile after a control reconnect.
     Sync {
         /// Every session signaling believes is live.
@@ -67,9 +96,15 @@ pub struct WireSession {
     /// Optional separate soundboard audio SSRC.
     #[serde(default)]
     pub soundboard_ssrc: Option<u32>,
-    /// Trusted signaling authorization, disabled for older clients.
+    /// Whether audio is allowed; absent for older signaling versions.
+    #[serde(default = "default_publish_audio")]
+    pub can_publish_audio: bool,
+    /// Whether video is allowed; absent for older signaling versions.
+    #[serde(default = "default_publish_audio")]
+    pub can_publish_video: bool,
+    /// Require bounded atomic grants.
     #[serde(default)]
-    pub can_publish_soundboard: bool,
+    pub guarded_publish: bool,
     /// Negotiated codecs.
     pub codecs: Vec<WireCodec>,
     /// Simulcast layers, ascending quality.
@@ -78,6 +113,10 @@ pub struct WireSession {
     /// The screen share stream, when the client sends one beside the camera.
     #[serde(default)]
     pub screen: Option<WireStream>,
+}
+
+fn default_publish_audio() -> bool {
+    true
 }
 
 /// A single-layer stream (the screen share).
@@ -158,6 +197,27 @@ pub enum WireEvent {
         /// Correlation id.
         req: Option<String>,
         /// Session id.
+        session_id: String,
+    },
+    /// Reply to `set_publish_audio`.
+    PublishAudioApplied {
+        /// Correlation id.
+        req: Option<String>,
+        /// Session id.
+        session_id: String,
+    },
+    /// Reply to `set_publish_video`.
+    PublishVideoApplied {
+        /// Correlation id.
+        req: Option<String>,
+        /// Session id.
+        session_id: String,
+    },
+    /// Reply after an atomic publish grant is applied.
+    PublishPermissionsApplied {
+        /// Correlation id.
+        req: Option<String>,
+        /// Target session.
         session_id: String,
     },
     /// Reply to `sync`.

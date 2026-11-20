@@ -18,7 +18,7 @@ async fn check_soundboard(allowed: bool) {
     alice.soundboard_ssrc = Some(3333);
     let mut bob = Client::new(2222, vec![]);
     let mut spec = alice.session_spec("alice", "room");
-    spec.can_publish_soundboard = allowed;
+    spec.guarded_publish = true;
     let alice_sfu = match handle
         .execute(Command::CreateSession(Box::new(spec)))
         .await
@@ -27,6 +27,24 @@ async fn check_soundboard(allowed: bool) {
         Outcome::Created(local) => local,
         _ => panic!("create alice"),
     };
+    let expires_at = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_millis() as u64
+        + 14_000;
+    handle
+        .execute(Command::SetPublishPermissions {
+            session_id: "alice".into(),
+            update: sfu_core::domain::permission_lease::PermissionUpdate {
+                revision: 1,
+                expires_at,
+                can_publish_audio: true,
+                can_publish_video: false,
+                can_publish_soundboard: allowed,
+            },
+        })
+        .await
+        .unwrap();
     let bob_sfu = match handle
         .execute(Command::CreateSession(Box::new(
             bob.session_spec("bob", "room"),
@@ -77,7 +95,11 @@ async fn check_soundboard(allowed: bool) {
     let sounds = bob.received_from(3333);
     if allowed {
         assert!(!sounds.is_empty(), "authorized soundboard reaches peer");
-        assert!(sounds.iter().all(|p| p.payload.as_slice() == [0xb0, 4, 5, 6]));
+        assert!(
+            sounds
+                .iter()
+                .all(|p| p.payload.as_slice() == [0xb0, 4, 5, 6])
+        );
     } else {
         assert!(
             sounds.is_empty(),
