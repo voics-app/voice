@@ -68,6 +68,7 @@ defmodule DiscordyVoice.Interface.Router do
   # operate on a replacement node. Both denials are attempted even when one command fails.
   post "/internal/v1/sessions/:session_id/revoke" do
     deps = Deps.current()
+
     with true <- authorized?(conn, deps.settings.internal_token),
          [node_id] <- get_req_header(conn, "x-voice-node-id"),
          true <- node_id == deps.settings.node_id,
@@ -75,6 +76,7 @@ defmodule DiscordyVoice.Interface.Router do
          {:ok, ^lease} <- deps.registration.lease_id() do
       audio = deps.sfu.set_publish_audio(session_id, false)
       video = deps.sfu.set_publish_video(session_id, false)
+
       if audio == :ok and video == :ok,
         do: json(conn, 200, %{revoked: true}),
         else: json(conn, 503, %{error: "sfu_unavailable"})
@@ -114,14 +116,24 @@ defmodule DiscordyVoice.Interface.Router do
     end
   end
 
-  defp permission_update(%{"revision" => revision, "expires_at" => expires_at,
-         "can_publish_audio" => audio, "can_publish_video" => video,
-         "can_publish_soundboard" => soundboard})
+  defp permission_update(%{
+         "revision" => revision,
+         "expires_at" => expires_at,
+         "can_publish_audio" => audio,
+         "can_publish_video" => video,
+         "can_publish_soundboard" => soundboard
+       })
        when is_integer(revision) and revision >= 0 and is_integer(expires_at) and expires_at > 0 and
               is_boolean(audio) and is_boolean(video) and is_boolean(soundboard) and
               (not soundboard or audio) do
-    {:ok, %{revision: revision, expires_at: expires_at, can_publish_audio: audio,
-      can_publish_video: video, can_publish_soundboard: soundboard}}
+    {:ok,
+     %{
+       revision: revision,
+       expires_at: expires_at,
+       can_publish_audio: audio,
+       can_publish_video: video,
+       can_publish_soundboard: soundboard
+     }}
   end
 
   defp permission_update(_), do: {:error, :invalid_permissions}

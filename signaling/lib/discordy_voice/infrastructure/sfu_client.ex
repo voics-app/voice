@@ -50,7 +50,8 @@ defmodule DiscordyVoice.Infrastructure.SfuClient do
   def set_publish_video(session_id, allowed), do: call({:set_publish_video, session_id, allowed})
 
   @impl DiscordyVoice.Application.Ports.SfuControl
-  def set_publish_permissions(session_id, update), do: call({:set_publish_permissions, session_id, update})
+  def set_publish_permissions(session_id, update),
+    do: call({:set_publish_permissions, session_id, update})
 
   @doc "Whether the control socket is currently connected."
   @spec connected?(GenServer.server()) :: boolean()
@@ -132,9 +133,18 @@ defmodule DiscordyVoice.Infrastructure.SfuClient do
   def handle_call({:set_publish_permissions, session_id, update}, from, state) do
     case Map.get(state.sessions, session_id) do
       %{guarded_publish: true} ->
-        {_req, state} = send_command(state, "set_publish_permissions", Map.put(update, :session_id, session_id), {:publish_permissions, from, session_id})
+        {_req, state} =
+          send_command(
+            state,
+            "set_publish_permissions",
+            Map.put(update, :session_id, session_id),
+            {:publish_permissions, from, session_id}
+          )
+
         {:noreply, state}
-      _ -> {:reply, {:error, :unknown_or_unguarded_session}, state}
+
+      _ ->
+        {:reply, {:error, :unknown_or_unguarded_session}, state}
     end
   end
 
@@ -257,12 +267,17 @@ defmodule DiscordyVoice.Infrastructure.SfuClient do
     end
   end
 
-  defp handle_message(%{"evt" => "publish_permissions_applied", "req" => req, "session_id" => session_id}, state) do
+  defp handle_message(
+         %{"evt" => "publish_permissions_applied", "req" => req, "session_id" => session_id},
+         state
+       ) do
     case Map.pop(state.pending, req) do
       {{:publish_permissions, from, ^session_id}, pending} ->
         GenServer.reply(from, :ok)
         %{state | pending: pending}
-      {_other, pending} -> %{state | pending: pending}
+
+      {_other, pending} ->
+        %{state | pending: pending}
     end
   end
 

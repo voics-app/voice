@@ -128,7 +128,10 @@ defmodule DiscordyVoice.FakeSfuServer do
     state
   end
 
-  defp handle_command(%{"cmd" => "set_publish_permissions", "req" => req, "session_id" => id}, state) do
+  defp handle_command(
+         %{"cmd" => "set_publish_permissions", "req" => req, "session_id" => id},
+         state
+       ) do
     reply(state.client, %{evt: "publish_permissions_applied", req: req, session_id: id})
     state
   end
