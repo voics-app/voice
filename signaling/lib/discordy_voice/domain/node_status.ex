@@ -40,7 +40,11 @@ defmodule DiscordyVoice.Domain.NodeStatus do
 
     fields =
       if status.control_ip do
-        Map.merge(fields, %{control_ip: status.control_ip, control_port: status.control_port, registration_lease: status.registration_lease})
+        Map.merge(fields, %{
+          control_ip: status.control_ip,
+          control_port: status.control_port,
+          registration_lease: status.registration_lease
+        })
       else
         fields
       end

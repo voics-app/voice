@@ -159,7 +159,9 @@ defmodule DiscordyVoice.Application.Settings do
     is_local = vars["DISCORDY_ENV"] in [nil, "", "local"]
 
     case blank_to_nil(vars["VOICE_CONTROL_IP"]) do
-      nil -> {:ok, nil}
+      nil ->
+        {:ok, nil}
+
       value ->
         case :inet.parse_address(String.to_charlist(value)) do
           {:ok, {10, _, _, _}} -> {:ok, value}

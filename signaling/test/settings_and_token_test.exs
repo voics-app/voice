@@ -46,9 +46,15 @@ defmodule DiscordyVoice.SettingsAndTokenTest do
     test "control address accepts only private IPv4" do
       assert {:ok, settings} = Settings.from_env(Map.put(@env, "VOICE_CONTROL_IP", "10.42.0.8"))
       assert settings.control_ip == "10.42.0.8"
-      assert {:error, errors} = Settings.from_env(Map.put(@env, "VOICE_CONTROL_IP", "203.0.113.1"))
+
+      assert {:error, errors} =
+               Settings.from_env(Map.put(@env, "VOICE_CONTROL_IP", "203.0.113.1"))
+
       assert Enum.any?(errors, &String.contains?(&1, "VOICE_CONTROL_IP"))
-      production = Map.merge(@env, %{"DISCORDY_ENV" => "production", "VOICE_CONTROL_IP" => "127.0.0.1"})
+
+      production =
+        Map.merge(@env, %{"DISCORDY_ENV" => "production", "VOICE_CONTROL_IP" => "127.0.0.1"})
+
       assert {:error, _} = Settings.from_env(production)
     end
 

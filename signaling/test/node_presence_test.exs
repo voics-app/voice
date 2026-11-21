@@ -54,15 +54,23 @@ defmodule DiscordyVoice.NodePresenceTest do
   test "advertises configured control address tied to the registration lease" do
     start_supervised!(
       {NodePresence,
-       settings: Fixtures.settings(node_id: "control-test", control_ip: "10.42.0.8", http_port: 4100),
+       settings:
+         Fixtures.settings(node_id: "control-test", control_ip: "10.42.0.8", http_port: 4100),
        registry: FakeNodeRegistry,
        interval_ms: 60_000,
        name: :control_test},
       id: :control_test
     )
+
     eventually(fn -> NodePresence.registered?(:control_test) end)
     {json, lease} = FakeNodeRegistry.get(Contracts.node_key("nl-home", "control-test"))
-    assert %{"control_ip" => "10.42.0.8", "control_port" => 4100, "registration_lease" => lease_id} = Jason.decode!(json)
+
+    assert %{
+             "control_ip" => "10.42.0.8",
+             "control_port" => 4100,
+             "registration_lease" => lease_id
+           } = Jason.decode!(json)
+
     assert lease_id == Integer.to_string(lease)
   end
 
