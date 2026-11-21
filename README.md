@@ -127,6 +127,8 @@ regionctl undrain eu-west-1
 
 `add` upserts a proxied A record for `--public-host` (`--dns-only` to skip the proxy), writes `regions/<name>/kustomization.yaml` from the template conventions of the gitops repository (next free `SNOWFLAKE_WORKER_ID` in 192-255, node id `<name>-1`), and registers the overlay in `regions/kustomization.yaml`. It never commits: review the diff and open the PR.
 
+`add` fails closed on worker IDs: every directory under `regions/` (except `_template`, `common` and the `dev` aggregate) must have a readable `kustomization.yaml` with a `SNOWFLAKE_WORKER_ID`. If one is missing or malformed, `add` aborts before touching DNS or files, because a skipped overlay could hide a used ID and cause a duplicate on the 3-node cluster. Fix or remove the broken directory and rerun.
+
 ## Pending owner actions
 
 - **GitHub Actions**: `ci.yml` calls the reusable workflows of `discordy-voics/.github@main`; they run once the repository is pushed and the runner scale set exists.
