@@ -76,6 +76,13 @@ defmodule DiscordyVoice.UseCasesTest do
                Conn.send_frame(conn, 0, Fixtures.identify("a", "s", "c"))
     end
 
+    test "an unregistered replica refuses even a valid token for its node", %{deps: deps} do
+      conn = Conn.start(:unregistered, %{deps | registration: DiscordyVoice.UnregisteredNode})
+
+      assert [{:close, :sfu_unavailable}] =
+               Conn.send_frame(conn, 0, Fixtures.identify("a", "s", "c"))
+    end
+
     test "a draining node refuses new sessions but keeps existing ones", %{deps: deps} do
       {conn, _} = join(:a, "a", "ch-1", deps)
       DrainControl.drain()

@@ -15,9 +15,19 @@ defmodule DiscordyVoice.EtcdIntegrationTest do
                 docker -> match?({_, 0}, System.cmd(docker, ["info"], stderr_to_stdout: true))
               end)
 
-  @moduletag skip: if(@docker_up, do: false, else: "docker is unavailable")
+  @endpoint System.get_env("ETCD_TEST_ENDPOINT")
+  @moduletag skip: if(@docker_up or @endpoint != nil, do: false, else: "docker is unavailable")
 
   setup_all do
+    if @endpoint do
+      wait_for_etcd([@endpoint])
+      {:ok, etcd_endpoints: [@endpoint]}
+    else
+      start_etcd()
+    end
+  end
+
+  defp start_etcd do
     name = "voice-signaling-etcd-#{System.unique_integer([:positive])}"
 
     {_, 0} =
@@ -41,7 +51,7 @@ defmodule DiscordyVoice.EtcdIntegrationTest do
     {out, 0} = System.cmd("docker", ["port", name, "2379/tcp"])
     port = out |> String.split("\n", trim: true) |> hd() |> String.split(":") |> List.last()
     wait_for_etcd(["127.0.0.1:#{port}"])
-    {:ok, etcd_port: port}
+    {:ok, etcd_endpoints: ["127.0.0.1:#{port}"]}
   end
 
   # The container accepts connections a moment after `docker run` returns: connecting once
@@ -78,9 +88,9 @@ defmodule DiscordyVoice.EtcdIntegrationTest do
   end
 
   test "NodePresence registers the node, follows the drain marker and cleans up", %{
-    etcd_port: port
+    etcd_endpoints: endpoints
   } do
-    settings = Fixtures.settings(node_id: "etcd-node", etcd_endpoints: ["127.0.0.1:#{port}"])
+    settings = Fixtures.settings(node_id: "etcd-node", etcd_endpoints: endpoints)
     key = Contracts.node_key("nl-home", "etcd-node")
     on_exit(&DrainControl.undrain/0)
 
@@ -100,5 +110,21 @@ defmodule DiscordyVoice.EtcdIntegrationTest do
 
     stop_supervised!(NodePresence)
     assert {:ok, false} = EtcdNodeRegistry.exists?(key)
+  end
+
+  test "node ownership is atomic and a stale owner cannot overwrite or remove its successor" do
+    key = Contracts.node_key("nl-home", "exclusive-node")
+    {:ok, first} = EtcdNodeRegistry.grant(10)
+    {:ok, second} = EtcdNodeRegistry.grant(10)
+    assert :ok = EtcdNodeRegistry.claim(key, "first", first)
+    assert {:error, :registration_conflict} = EtcdNodeRegistry.claim(key, "second", second)
+    assert {:error, :registration_conflict} = EtcdNodeRegistry.refresh(key, "second", second)
+    assert {:error, :registration_conflict} = EtcdNodeRegistry.release(key, second)
+    assert :ok = EtcdNodeRegistry.refresh(key, "first-updated", first)
+    assert :ok = EtcdNodeRegistry.release(key, first)
+    assert :ok = EtcdNodeRegistry.claim(key, "second", second)
+    assert {:error, :registration_conflict} = EtcdNodeRegistry.release(key, first)
+    assert {:ok, true} = EtcdNodeRegistry.exists?(key)
+    assert :ok = EtcdNodeRegistry.release(key, second)
   end
 end

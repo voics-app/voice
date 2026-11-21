@@ -60,6 +60,31 @@ defmodule DiscordyVoice.Infrastructure.EtcdNodeRegistry do
   end
 
   @impl true
+  def claim(key, value, lease) do
+    compare = key |> :eetcd_compare.new() |> :eetcd_compare.version(~c"=", 0)
+    transaction(compare, :eetcd_op.put(%{key: key, value: value, lease: lease}))
+  end
+
+  @impl true
+  def refresh(key, value, lease) do
+    transaction(owner(key, lease), :eetcd_op.put(%{key: key, value: value, lease: lease}))
+  end
+
+  @impl true
+  def release(key, lease),
+    do: transaction(owner(key, lease), :eetcd_op.delete(%{key: key}))
+
+  defp owner(key, lease), do: key |> :eetcd_compare.new() |> :eetcd_compare.lease(~c"=", lease)
+
+  defp transaction(compare, operation) do
+    case :eetcd_kv.txn(@conn, [compare], [operation], []) do
+      {:ok, %{succeeded: true}} -> :ok
+      {:ok, %{succeeded: false}} -> {:error, :registration_conflict}
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  @impl true
   def exists?(key) do
     case :eetcd_kv.get(@conn, key) do
       {:ok, %{count: count}} -> {:ok, count > 0}

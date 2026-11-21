@@ -7,8 +7,26 @@ Voics voice: the signaling service (Elixir), the SFU (Rust, [str0m](https://gith
 | voice-signaling | `signaling/` | `ghcr.io/voics-app/voice-signaling` | Voice WebSocket (`/voice`, port 4100), room registry, SFU control client, etcd discovery, drain |
 | voice-sfu | `sfu/` | `ghcr.io/voics-app/voice-sfu` | UDP media mux (port 50000), ICE-lite and DTLS-SRTP, audio and simulcast/SVC video forwarding, NDJSON control (`127.0.0.1:4101`) |
 | regionctl | `regionctl/` | none (release binary) | `add`, `list`, `drain`, `undrain` |
+| voice-prober | `prober/` | `ghcr.io/voics-app/voice-prober` | Independent synthetic WebSocket/ICE/DTLS/RTP observations, leased health results, metrics and exact-key blacklist commands |
 
 The design follows [How Discord handles two and a half million concurrent voice users using WebRTC](https://discord.com/blog/how-discord-handles-two-and-half-million-concurrent-voice-users-using-webrtc): one SFU per node, all channels of a guild on one node, signaling decoupled from media, and state rebuilt by replaying sessions when the SFU restarts. The wire contracts are the pinned interface **P8** of the master plan; see [ARCHITECTURE.md](ARCHITECTURE.md).
+
+## Multiple voice nodes
+
+Each signaling process and its SFU form one allocation target. Give it a unique `VOICE_NODE_ID`,
+dedicated `VOICE_PUBLIC_WS_URL`, and reachable public IP/UDP-port pair. The gateway selects
+that target once per guild or DM call and reuses it. A WebSocket Service that randomly routes
+the node's URL to another signaling replica breaks token and room affinity.
+
+Node discovery uses an atomic etcd claim. A duplicate live identity cannot overwrite the
+existing owner; refresh and shutdown deletion compare the owning lease. A process with an
+expired or lost registration reports unready and rejects new IDENTIFY requests. Existing media
+sessions continue while discovery recovers. A replica that crashes leaves its lease to expire
+before a replacement can acquire its ID. Signaling does not generate Snowflake IDs.
+
+The ownership regression runs against real etcd as part of `signaling/test/etcd_integration_test.exs`.
+For tests already running in a Docker network, set `ETCD_TEST_ENDPOINT=etcd-host:2379`; otherwise
+the suite starts a disposable etcd on a random host port.
 
 ## Run locally
 
@@ -36,6 +54,8 @@ make docker  # builds voice-signaling and voice-sfu
 ```
 
 - `sfu/crates/sfu-core/tests/two_clients_audio.rs`: two in-process str0m clients exchange Opus through the SFU over real UDP.
+- `sfu/crates/sfu-core/tests/screen_share.rs`: exact packet and payload delivery for paced and burst screen streams, plus opt-in isolation. The shared client drains str0m output after every received datagram and RTP write: RTP mode retains only one pending packet event, so batching inputs before polling silently loses observations in the fixture.
+- `sfu/crates/sfu-core/tests/camera_rejoin.rs`: first/rejoin keyframe latency after transport connection, including a deliberately delayed viewer handshake. The first keyframe must arrive within 500ms; allocation uses a startup estimate so it does not wait for a complete one-second bitrate window.
 - `sfu/crates/sfu-control/tests`: the NDJSON control server against a real engine over TCP.
 - `signaling/test`: protocol use cases, rooms, the SFU client against a scripted SFU (including replay after a restart), etcd registration against a real etcd (Docker, random port; skipped without Docker) and full WebSocket handshakes with gun clients.
 - `regionctl/tests`: the CLI against a temporary gitops checkout, a mock Cloudflare API and a mock gateway.
@@ -60,6 +80,8 @@ Names follow pinned interface P2. Configuration is read from the environment and
 | `SFU_CONTROL_ADDR` | no | `127.0.0.1:4101` | SFU control socket |
 | `SFU_EXECUTABLE` | no | unset | When set, signaling runs and restarts the SFU itself (otherwise it is a sibling container) |
 | `VOICE_DRAIN_ON_START` | no | `false` | Start in drain mode (set by `regionctl drain --region`) |
+| `VOICE_PROBE_TOKEN_SECRET` | no | unset | Prepared active-probe admission key, at least 32 bytes and distinct from `VOICE_TOKEN_SECRET`; absent disables probes |
+| `VOICE_REQUIRE_PROBE` | no | `false` | Advertise that new allocations require current leased healthy probe results; enable only after the independent observer and gateway support are verified |
 | `PORT` | no | `4100` | HTTP and WebSocket port |
 | `DISCORDY_ENV` | no | `local` | `local` or `production` |
 | `LOG_LEVEL` | no | `info` | `debug`, `info`, `notice`, `warning`, `error` |
@@ -82,6 +104,15 @@ Names follow pinned interface P2. Configuration is read from the environment and
 signaling (port 4100) and the SFU (port 4102) both serve `GET /healthz`, `GET /readyz` and `GET /metrics` (Prometheus) and write JSON logs to stdout. Signaling is ready when the SFU control link is up and the node is registered in etcd.
 
 Signaling also serves `POST /internal/v1/drain`, `POST /internal/v1/undrain` and `GET /internal/v1/status` (token protected). The gateway can alternatively drain a node by writing `/discordy/voice/drain/<node_id>` in etcd; signaling polls it every 3 seconds.
+
+## Active health probes
+
+The independently operated [voice-prober](prober/README.md) checks each node's advertised
+WebSocket and media route with two isolated synthetic peers. Its health records share an
+exclusive observer lease and every write compares the current node registration lease.
+It exports `/metrics` on port 4103. The daemon must be started explicitly; no deployment
+or `VOICE_REQUIRE_PROBE` activation is included here. See its README for configuration,
+blacklist commands, acceptance tests and the distinction between media health and allocation.
 
 ## regionctl
 

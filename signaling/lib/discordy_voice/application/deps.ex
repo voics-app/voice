@@ -3,8 +3,8 @@ defmodule DiscordyVoice.Application.Deps do
 
   alias DiscordyVoice.Application.Settings
 
-  @enforce_keys [:settings, :token_verifier, :sfu, :rooms, :ssrc, :drain]
-  defstruct [:settings, :token_verifier, :sfu, :rooms, :ssrc, :drain]
+  @enforce_keys [:settings, :token_verifier, :sfu, :rooms, :ssrc, :drain, :registration]
+  defstruct [:settings, :token_verifier, :sfu, :rooms, :ssrc, :drain, :registration]
 
   @type t :: %__MODULE__{
           settings: Settings.t(),
@@ -12,7 +12,8 @@ defmodule DiscordyVoice.Application.Deps do
           sfu: module(),
           rooms: module(),
           ssrc: module(),
-          drain: module()
+          drain: module(),
+          registration: module()
         }
 
   @doc "The wiring configured under `:discordy_voice, :deps` (set by the composition root)."

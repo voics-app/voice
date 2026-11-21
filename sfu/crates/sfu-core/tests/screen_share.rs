@@ -50,7 +50,10 @@ async fn create(
 }
 
 /// Runs Alice's screen share towards Bob; Bob opts in to watching it when `watch` is set.
-async fn share_screen(watch: bool) -> (Client, EngineHandle, Receiver<SfuEvent>) {
+async fn share_screen(
+    watch: bool,
+    frames_per_send: usize,
+) -> (Client, EngineHandle, Receiver<SfuEvent>) {
     let handle = start_engine().await;
     let events = handle.subscribe();
     let sfu_addr = handle.local_addr();
@@ -103,10 +106,12 @@ async fn share_screen(watch: bool) -> (Client, EngineHandle, Receiver<SfuEvent>)
                 next_send = Some(Instant::now() + WARMUP);
             }
             if sent < FRAMES && next_send.is_some_and(|t| Instant::now() >= t) {
-                let mut payload = VP8_KEYFRAME.to_vec();
-                payload.push(sent as u8);
-                alice.send_screen(5_000 + sent as u64, &payload, true);
-                sent += 1;
+                for _ in 0..frames_per_send.min(FRAMES - sent) {
+                    let mut payload = VP8_KEYFRAME.to_vec();
+                    payload.push(sent as u8);
+                    alice.send_screen(5_000 + sent as u64, &payload, true);
+                    sent += 1;
+                }
                 next_send = Some(Instant::now() + FRAME_INTERVAL);
             }
             if sent == FRAMES && bob.received_from(ALICE_SCREEN).len() >= FRAMES {
@@ -123,7 +128,7 @@ async fn share_screen(watch: bool) -> (Client, EngineHandle, Receiver<SfuEvent>)
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn watched_screen_share_is_forwarded_as_its_own_stream() {
-    let (bob, _handle, mut events) = share_screen(true).await;
+    let (bob, _handle, mut events) = share_screen(true, 1).await;
 
     // Every screen frame arrives under Alice's screen SSRC, contiguous, and none leaks onto the
     // camera stream.
@@ -156,10 +161,22 @@ async fn watched_screen_share_is_forwarded_as_its_own_stream() {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn unwatched_screen_share_is_not_forwarded() {
-    let (bob, _handle, mut events) = share_screen(false).await;
+    let (bob, _handle, mut events) = share_screen(false, 1).await;
 
     assert!(bob.received_from(ALICE_SCREEN).is_empty());
     while let Ok(event) = events.try_recv() {
         assert!(!matches!(event, SfuEvent::StreamViewers { .. }));
     }
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn screen_packets_arriving_in_bursts_are_all_observed() {
+    let (bob, _handle, _events) = share_screen(true, 8).await;
+    let mut indices: Vec<u8> = bob
+        .received_from(ALICE_SCREEN)
+        .iter()
+        .map(|packet| packet.payload[4])
+        .collect();
+    indices.sort_unstable();
+    assert_eq!(indices, (0..FRAMES as u8).collect::<Vec<_>>());
 }

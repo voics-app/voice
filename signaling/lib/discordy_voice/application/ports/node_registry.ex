@@ -8,5 +8,8 @@ defmodule DiscordyVoice.Application.Ports.NodeRegistry do
   @callback keep_alive(lease()) :: :ok | {:error, term()}
   @callback put(key :: String.t(), value :: binary(), lease()) :: :ok | {:error, term()}
   @callback delete(key :: String.t()) :: :ok | {:error, term()}
+  @callback claim(key :: String.t(), value :: binary(), lease()) :: :ok | {:error, term()}
+  @callback refresh(key :: String.t(), value :: binary(), lease()) :: :ok | {:error, term()}
+  @callback release(key :: String.t(), lease()) :: :ok | {:error, term()}
   @callback exists?(key :: String.t()) :: {:ok, boolean()} | {:error, term()}
 end

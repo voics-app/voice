@@ -54,11 +54,22 @@ jobs:
       image-name: regionctl
       description: Voics region control CLI
 
+  prober:
+    permissions:
+      contents: read
+      actions: read
+    uses: voics-app/.github/.github/workflows/rust.yml@main
+    with:
+      working-directory: prober
+      image-name: voice-prober
+      description: Voics independent media health observer
+      system-packages: cmake
+
   docker:
-    needs: [signaling, sfu]
+    needs: [signaling, sfu, prober]
     strategy:
       matrix:
-        component: [signaling, sfu]
+        component: [signaling, sfu, prober]
     permissions: {contents: read, packages: write, id-token: write}
     uses: voics-app/.github/.github/workflows/docker.yml@main
     with:
