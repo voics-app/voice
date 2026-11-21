@@ -93,6 +93,9 @@ pub struct WireSession {
     pub local_pwd: Option<String>,
     /// SSRC of the publisher's audio.
     pub audio_ssrc: u32,
+    /// Optional separate soundboard audio SSRC.
+    #[serde(default)]
+    pub soundboard_ssrc: Option<u32>,
     /// Whether audio is allowed; absent for older signaling versions.
     #[serde(default = "default_publish_audio")]
     pub can_publish_audio: bool,

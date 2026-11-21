@@ -146,6 +146,11 @@ impl PeerFactory {
         let own_audio = audio_mid(spec.audio_ssrc);
         api.declare_media(own_audio, RtcMediaKind::Audio);
         api.expect_stream_rx(spec.audio_ssrc.into(), None, own_audio, None);
+        if let Some(ssrc) = spec.soundboard_ssrc {
+            let mid = audio_mid(ssrc);
+            api.declare_media(mid, RtcMediaKind::Audio);
+            api.expect_stream_rx(ssrc.into(), None, mid, None);
+        }
         if let Some(primary) = spec.primary_video() {
             let own_video = video_mid(primary.ssrc);
             api.declare_media(own_video, RtcMediaKind::Video);

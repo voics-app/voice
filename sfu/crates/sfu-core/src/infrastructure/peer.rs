@@ -24,6 +24,8 @@ use crate::domain::vp9_descriptor::Vp9Descriptor;
 pub enum TrackKind {
     /// The publisher's audio.
     Audio,
+    /// Separate soundboard audio.
+    Soundboard,
     /// One video layer (index into the publisher's layers).
     VideoLayer(usize),
     /// The publisher's screen share.
@@ -102,6 +104,8 @@ pub struct Subscription {
     /// Publisher audio SSRC (also the outbound SSRC).
     pub audio_ssrc: u32,
     audio: RtpRewriter,
+    /// Separate soundboard SSRC and sequence rewriter.
+    soundboard: Option<(u32, RtpRewriter)>,
     /// Video, when both sides support the publisher's codec.
     pub video: Option<VideoSubscription>,
     /// Screen share, when the publisher sends one and both sides support the codec.
@@ -168,6 +172,9 @@ impl Peer {
         if ssrc == self.spec.audio_ssrc {
             return Some(TrackKind::Audio);
         }
+        if self.spec.soundboard_ssrc == Some(ssrc) {
+            return Some(TrackKind::Soundboard);
+        }
         if self.spec.is_screen(ssrc) {
             return Some(TrackKind::Screen);
         }
@@ -180,6 +187,11 @@ impl Peer {
         let amid = audio_mid(publisher.audio_ssrc);
         api.declare_media(amid, RtcMediaKind::Audio);
         api.declare_stream_tx(publisher.audio_ssrc.into(), None, amid, None);
+        if let Some(ssrc) = publisher.soundboard_ssrc {
+            let mid = audio_mid(ssrc);
+            api.declare_media(mid, RtcMediaKind::Audio);
+            api.declare_stream_tx(ssrc.into(), None, mid, None);
+        }
 
         let video = match (publisher.primary_video(), publisher.video_codec()) {
             (Some(primary), Some(codec_spec)) => match codec_spec.codec {
@@ -229,6 +241,9 @@ impl Peer {
             Subscription {
                 audio_ssrc: publisher.audio_ssrc,
                 audio: RtpRewriter::new(Codec::Opus.clock_rate()),
+                soundboard: publisher
+                    .soundboard_ssrc
+                    .map(|ssrc| (ssrc, RtpRewriter::new(Codec::Opus.clock_rate()))),
                 video,
                 screen,
             },
@@ -242,6 +257,9 @@ impl Peer {
         };
         let mut api = self.rtc.direct_api();
         api.remove_media(audio_mid(sub.audio_ssrc));
+        if let Some((ssrc, _)) = sub.soundboard {
+            api.remove_media(audio_mid(ssrc));
+        }
         if let Some(video) = sub.video {
             api.remove_media(video_mid(video.out_ssrc));
         }
@@ -283,6 +301,32 @@ impl Peer {
                 .marker(packet.marker)
                 .ext_vals(ext);
                 if let Some(stream) = self.rtc.direct_api().stream_tx(&sub.audio_ssrc.into()) {
+                    stream.write_rtp(write);
+                }
+            }
+            TrackKind::Soundboard => {
+                let Some((ssrc, rewriter)) = sub.soundboard.as_mut() else {
+                    return;
+                };
+                if !self.sink_wants.wants(*ssrc) {
+                    rewriter.skip(packet.rewriter_input());
+                    return;
+                }
+                let Some(out) = rewriter.rewrite(packet.rewriter_input()) else {
+                    return;
+                };
+                let Some(pt) = self.spec.payload_type_for(Codec::Opus) else {
+                    return;
+                };
+                let write = RtpWrite::new(
+                    pt.into(),
+                    out.seq.into(),
+                    out.timestamp,
+                    packet.arrival,
+                    packet.payload.clone(),
+                )
+                .marker(packet.marker);
+                if let Some(stream) = self.rtc.direct_api().stream_tx(&(*ssrc).into()) {
                     stream.write_rtp(write);
                 }
             }

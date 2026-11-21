@@ -180,23 +180,25 @@ impl Str0mRouter {
                                 }
                                 Event::RtpPacket(packet) => {
                                     if let Some(rtp) = classify(id, peer, packet, self.start, now) {
-                                        if peer.spec.guarded_publish {
-                                            let Some(grant) = peer.permission_lease.current(now)
-                                            else {
-                                                continue;
-                                            };
-                                            if (rtp.track == TrackKind::Audio
-                                                && !grant.can_publish_audio)
-                                                || (rtp.track != TrackKind::Audio
-                                                    && !grant.can_publish_video)
-                                            {
-                                                continue;
+                                        let allowed = if peer.spec.guarded_publish {
+                                            peer.permission_lease.current(now).is_some_and(
+                                                |grant| match rtp.track {
+                                                    TrackKind::Audio => grant.can_publish_audio,
+                                                    TrackKind::Soundboard => {
+                                                        grant.can_publish_audio
+                                                            && grant.can_publish_soundboard
+                                                    }
+                                                    _ => grant.can_publish_video,
+                                                },
+                                            )
+                                        } else {
+                                            match rtp.track {
+                                                TrackKind::Audio => peer.spec.can_publish_audio,
+                                                TrackKind::Soundboard => false,
+                                                _ => peer.spec.can_publish_video,
                                             }
-                                        } else if (rtp.track == TrackKind::Audio
-                                            && !peer.spec.can_publish_audio)
-                                            || (rtp.track != TrackKind::Audio
-                                                && !peer.spec.can_publish_video)
-                                        {
+                                        };
+                                        if !allowed {
                                             continue;
                                         }
                                         if record_inbound(
@@ -816,6 +818,7 @@ fn record_inbound(
                 });
             }
         }
+        TrackKind::Soundboard => {}
         TrackKind::VideoLayer(index) => {
             if let Some(meter) = peer.layer_meters.get_mut(index) {
                 let was_inactive = meter.estimate_bps(rtp.arrival_us) == 0;

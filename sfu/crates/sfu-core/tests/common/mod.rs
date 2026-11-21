@@ -36,6 +36,7 @@ pub struct Client {
     socket: UdpSocket,
     local: SocketAddr,
     pub audio_ssrc: u32,
+    pub soundboard_ssrc: Option<u32>,
     pub video_layers: Vec<VideoLayer>,
     pub screen: Option<VideoLayer>,
     pub received: Vec<Received>,
@@ -86,6 +87,7 @@ impl Client {
             socket,
             local,
             audio_ssrc,
+            soundboard_ssrc: None,
             video_layers,
             screen: None,
             received: Vec::new(),
@@ -126,6 +128,7 @@ impl Client {
                 },
             ],
             audio_ssrc: self.audio_ssrc,
+            soundboard_ssrc: self.soundboard_ssrc,
             can_publish_audio: true,
             can_publish_video: true,
             guarded_publish: false,
@@ -156,6 +159,11 @@ impl Client {
         let own = mid('a', self.audio_ssrc);
         api.declare_media(own, MediaKind::Audio);
         api.declare_stream_tx(self.audio_ssrc.into(), None, own, None);
+        if let Some(ssrc) = self.soundboard_ssrc {
+            let mid = mid('a', ssrc);
+            api.declare_media(mid, MediaKind::Audio);
+            api.declare_stream_tx(ssrc.into(), None, mid, None);
+        }
         if let Some(primary) = self.video_layers.first() {
             let vmid = mid('v', primary.ssrc);
             api.declare_media(vmid, MediaKind::Video);
@@ -206,6 +214,25 @@ impl Client {
                 )
                 .ext_vals(ext),
             );
+        }
+        self.drain_output();
+    }
+
+    /// Sends one packet on the separately declared soundboard audio SSRC.
+    pub fn send_soundboard(&mut self, payload: &[u8]) {
+        let Some(ssrc) = self.soundboard_ssrc else {
+            return;
+        };
+        let seq = self.seq;
+        self.seq += 1;
+        if let Some(stream) = self.rtc.direct_api().stream_tx(&ssrc.into()) {
+            stream.write_rtp(RtpWrite::new(
+                OPUS_PT.into(),
+                seq.into(),
+                (seq * 960) as u32,
+                Instant::now(),
+                payload.to_vec(),
+            ));
         }
         self.drain_output();
     }

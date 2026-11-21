@@ -138,6 +138,7 @@ fn to_spec(session: WireSession) -> Result<SessionSpec, MappingError> {
         local_ice,
         codecs,
         audio_ssrc: session.audio_ssrc,
+        soundboard_ssrc: session.soundboard_ssrc,
         can_publish_audio: session.can_publish_audio,
         can_publish_video: session.can_publish_video,
         guarded_publish: session.guarded_publish,
@@ -279,6 +280,7 @@ mod tests {
             panic!("expected create_session");
         };
         assert_eq!(spec.id, "s".into());
+        assert!(!spec.can_publish_soundboard);
         assert_eq!(spec.codecs.len(), 2);
         assert_eq!(spec.video_layers[0].rtx_ssrc, 7);
         assert!(spec.local_ice.is_none());
