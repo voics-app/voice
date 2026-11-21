@@ -6,6 +6,7 @@ pub mod keyframe;
 pub mod layer_allocation;
 pub mod layer_selector;
 pub mod opus;
+pub mod permission_lease;
 pub mod room;
 pub mod rtp_rewriter;
 pub mod session;

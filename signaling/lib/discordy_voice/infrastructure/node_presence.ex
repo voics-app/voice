@@ -130,11 +130,11 @@ defmodule DiscordyVoice.Infrastructure.NodePresence do
   defp now, do: System.monotonic_time(:millisecond)
 
   defp write_registration(%{lease: lease} = state, lease) do
-    safe(fn -> state.registry.refresh(state.key, status_json(state.settings), lease) end)
+    safe(fn -> state.registry.refresh(state.key, status_json(state.settings, lease), lease) end)
   end
 
   defp write_registration(state, lease) do
-    safe(fn -> state.registry.claim(state.key, status_json(state.settings), lease) end)
+    safe(fn -> state.registry.claim(state.key, status_json(state.settings, lease), lease) end)
   end
 
   defp ensure_lease(%{lease: nil, registry: registry}),
@@ -155,11 +155,14 @@ defmodule DiscordyVoice.Infrastructure.NodePresence do
     kind, reason -> {:error, {kind, reason}}
   end
 
-  defp status_json(settings) do
+  defp status_json(settings, lease) do
     NodeStatus.to_json(%NodeStatus{
       node_id: settings.node_id,
       region: settings.region,
       ws_url: settings.public_ws_url,
+      control_ip: settings.control_ip,
+      control_port: settings.http_port,
+      registration_lease: Integer.to_string(lease),
       public_ip: settings.public_ip,
       udp_port: settings.udp_port,
       version: settings.version,

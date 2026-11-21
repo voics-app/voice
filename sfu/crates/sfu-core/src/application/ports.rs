@@ -39,6 +39,19 @@ pub trait MediaRouter {
     /// Tears the peer down and removes its tracks from `remaining_peers`.
     fn close_session(&mut self, id: &SessionId, remaining_peers: &[SessionId]);
 
+    /// Changes the audio publishing permission of an existing session.
+    fn set_publish_audio(&mut self, id: &SessionId, allowed: bool) -> Result<(), RouterError>;
+
+    /// Changes camera and screen forwarding permission for a session.
+    fn set_publish_video(&mut self, id: &SessionId, allowed: bool) -> Result<(), RouterError>;
+
+    /// Atomically applies a bounded capability update.
+    fn set_publish_permissions(
+        &mut self,
+        id: &SessionId,
+        update: crate::domain::permission_lease::PermissionUpdate,
+    ) -> Result<(), RouterError>;
+
     /// Applies MEDIA_SINK_WANTS for a subscriber.
     fn set_sink_wants(&mut self, id: &SessionId, wants: SinkWants) -> Result<(), RouterError>;
 }

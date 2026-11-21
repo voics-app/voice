@@ -122,6 +122,8 @@ pub struct KeyframeNeed {
 pub struct Peer {
     /// The session description.
     pub spec: SessionSpec,
+    /// Active bounded publishing grant for guarded sessions.
+    pub permission_lease: crate::domain::permission_lease::PermissionLease,
     /// The str0m instance.
     pub rtc: Rtc,
     /// Next time str0m wants a timeout input.
@@ -148,6 +150,7 @@ impl Peer {
         let layers = spec.video_layers.len();
         Self {
             spec,
+            permission_lease: Default::default(),
             rtc,
             next_timeout: now,
             alive: true,

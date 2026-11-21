@@ -24,6 +24,27 @@ pub enum Command {
         /// Publisher SSRC to quality.
         wants: Vec<(u32, u8)>,
     },
+    /// Change audio forwarding permission.
+    SetPublishAudio {
+        /// Session to update.
+        session_id: SessionId,
+        /// Whether publishing is allowed.
+        allowed: bool,
+    },
+    /// Change camera and screen forwarding permission.
+    SetPublishVideo {
+        /// Session to update.
+        session_id: SessionId,
+        /// Whether publishing is allowed.
+        allowed: bool,
+    },
+    /// Atomically replace the bounded publish grant.
+    SetPublishPermissions {
+        /// Target session.
+        session_id: SessionId,
+        /// Complete capability set.
+        update: crate::domain::permission_lease::PermissionUpdate,
+    },
     /// Reconcile sessions after a control reconnect.
     Sync(Vec<SessionId>),
 }
@@ -37,6 +58,12 @@ pub enum Outcome {
     Closed(bool),
     /// Wants applied.
     WantsApplied,
+    /// Audio publishing permission applied.
+    PublishAudioApplied,
+    /// Video publishing permission applied.
+    PublishVideoApplied,
+    /// Atomic publishing permission applied.
+    PublishPermissionsApplied,
     /// Sessions to replay.
     Synced(Vec<SessionId>),
 }
@@ -76,6 +103,27 @@ impl<R: MediaRouter, P: EventPublisher> SfuService<R, P> {
             Command::SetSinkWants { session_id, wants } => {
                 set_sink_wants(&mut self.router, &session_id, wants).map(|()| Outcome::WantsApplied)
             }
+            Command::SetPublishAudio {
+                session_id,
+                allowed,
+            } => self
+                .router
+                .set_publish_audio(&session_id, allowed)
+                .map(|()| Outcome::PublishAudioApplied)
+                .map_err(Into::into),
+            Command::SetPublishVideo {
+                session_id,
+                allowed,
+            } => self
+                .router
+                .set_publish_video(&session_id, allowed)
+                .map(|()| Outcome::PublishVideoApplied)
+                .map_err(Into::into),
+            Command::SetPublishPermissions { session_id, update } => self
+                .router
+                .set_publish_permissions(&session_id, update)
+                .map(|()| Outcome::PublishPermissionsApplied)
+                .map_err(Into::into),
             Command::Sync(known) => Ok(Outcome::Synced(sync_sessions(
                 &mut self.router,
                 &mut self.rooms,

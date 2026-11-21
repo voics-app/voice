@@ -113,6 +113,7 @@ defmodule DiscordyVoice.Application.UseCases.SelectProtocol do
       ice_pwd: offer.ice_pwd,
       remote_fingerprint: offer.fingerprint,
       audio_ssrc: session.ssrcs.audio,
+      guarded_publish: session.guarded_publish,
       codecs: Enum.map(negotiated.codecs, &wire_codec/1),
       video_layers: layers,
       screen: if(negotiated.video_codec, do: session.ssrcs.screen)

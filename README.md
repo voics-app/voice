@@ -137,3 +137,7 @@ regionctl undrain eu-west-1
 ## Git hooks
 
 Tests run locally, not in CI. Install [lefthook](https://github.com/evilmartians/lefthook) once and run `make hooks` (or `lefthook install`) to enable the pre-push hook in `lefthook.yml`: it runs this repository's lint and unit tests before every push. CI repeats only the slim gate on pull requests. Skip once with `LEFTHOOK=0 git push`.
+
+## Stage publishing controls
+
+The SFU control protocol accepts `can_publish_audio` and `can_publish_video` on session creation and supports `set_publish_audio` and `set_publish_video` for live sessions. Denied audio or video is dropped before forwarding; video includes camera and screen. Signaling records acknowledged updates for SFU replay. Missing fields currently preserve legacy permissive behavior, so these primitives alone do not make stage channels safe. Stage joins must remain disabled until gateway authorization, trusted node-affine delivery, revocation and fail-closed reconnect handling are integrated and verified end to end.

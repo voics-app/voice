@@ -4,6 +4,7 @@ defmodule DiscordyVoice.Interface.Router do
   use Plug.Router
 
   alias DiscordyVoice.Application.Deps
+  alias DiscordyVoice.Contracts
   alias DiscordyVoice.Infrastructure.{DrainControl, NodeLoad, NodePresence, SfuClient}
   alias DiscordyVoice.Interface.VoiceSocket
 
@@ -45,6 +46,48 @@ defmodule DiscordyVoice.Interface.Router do
     internal(conn, fn -> DrainControl.undrain() end)
   end
 
+  post "/internal/v1/sessions/:session_id/publish-permissions" do
+    deps = Deps.current()
+
+    with true <- authorized?(conn, deps.settings.internal_token),
+         [node_id] <- get_req_header(conn, "x-voice-node-id"),
+         true <- node_id == deps.settings.node_id,
+         [lease] <- get_req_header(conn, "x-voice-registration-lease"),
+         {:ok, ^lease} <- deps.registration.lease_id(),
+         {:ok, body, conn} <- read_body(conn, length: 4096),
+         {:ok, payload} <- Jason.decode(body),
+         {:ok, update} <- permission_update(payload),
+         recipients <- Registry.lookup(DiscordyVoice.SessionRegistry, session_id),
+         :ok <- deps.sfu.set_publish_permissions(session_id, update),
+         {:ok, ^lease} <- deps.registration.lease_id() do
+      announce_permissions(session_id, update, recipients)
+      json(conn, 200, %{applied: true, session_id: session_id, revision: update.revision})
+    else
+      _ -> json(conn, 503, %{error: "permission_update_failed"})
+    end
+  end
+
+  # Revoke-only until a leased, ordered grant protocol is ready. A stale registration cannot
+  # operate on a replacement node. Both denials are attempted even when one command fails.
+  post "/internal/v1/sessions/:session_id/revoke" do
+    deps = Deps.current()
+
+    with true <- authorized?(conn, deps.settings.internal_token),
+         [node_id] <- get_req_header(conn, "x-voice-node-id"),
+         true <- node_id == deps.settings.node_id,
+         [lease] <- get_req_header(conn, "x-voice-registration-lease"),
+         {:ok, ^lease} <- deps.registration.lease_id() do
+      audio = deps.sfu.set_publish_audio(session_id, false)
+      video = deps.sfu.set_publish_video(session_id, false)
+
+      if audio == :ok and video == :ok,
+        do: json(conn, 200, %{revoked: true}),
+        else: json(conn, 503, %{error: "sfu_unavailable"})
+    else
+      _ -> json(conn, 403, %{error: "invalid_control_identity"})
+    end
+  end
+
   get "/internal/v1/status" do
     internal(conn, fn -> :ok end)
   end
@@ -56,9 +99,7 @@ defmodule DiscordyVoice.Interface.Router do
   defp internal(conn, action) do
     expected = Deps.current().settings.internal_token
 
-    with [given] <- get_req_header(conn, "x-internal-token"),
-         true <- byte_size(given) == byte_size(expected),
-         true <- :crypto.hash_equals(given, expected) do
+    if authorized?(conn, expected) do
       action.()
 
       json(conn, 200, %{
@@ -67,9 +108,51 @@ defmodule DiscordyVoice.Interface.Router do
         rooms: NodeLoad.rooms()
       })
     else
-      _ -> json(conn, 401, %{error: "unauthorized"})
+      json(conn, 401, %{error: "unauthorized"})
     end
   end
+
+  defp authorized?(conn, expected) do
+    case get_req_header(conn, "x-internal-token") do
+      [given] -> byte_size(given) == byte_size(expected) and :crypto.hash_equals(given, expected)
+      _ -> false
+    end
+  end
+
+  # Capture the original sockets before the SFU call. A reconnect during the call must not
+  # receive the old session's acknowledgement, even if it reuses the same session id.
+  defp announce_permissions(session_id, update, recipients) do
+    if update.expires_at > System.system_time(:millisecond) do
+      current = Registry.lookup(DiscordyVoice.SessionRegistry, session_id)
+      data = Map.put(update, :session_id, session_id)
+
+      for {pid, value} <- recipients, {pid, value} in current do
+        send(pid, {:push, Contracts.op(:publish_permissions), data})
+      end
+    end
+  end
+
+  defp permission_update(%{
+         "revision" => revision,
+         "expires_at" => expires_at,
+         "can_publish_audio" => audio,
+         "can_publish_video" => video,
+         "can_publish_soundboard" => soundboard
+       })
+       when is_integer(revision) and revision >= 0 and is_integer(expires_at) and expires_at > 0 and
+              is_boolean(audio) and is_boolean(video) and is_boolean(soundboard) and
+              (not soundboard or audio) do
+    {:ok,
+     %{
+       revision: revision,
+       expires_at: expires_at,
+       can_publish_audio: audio,
+       can_publish_video: video,
+       can_publish_soundboard: soundboard
+     }}
+  end
+
+  defp permission_update(_), do: {:error, :invalid_permissions}
 
   defp json(conn, status, body) do
     conn

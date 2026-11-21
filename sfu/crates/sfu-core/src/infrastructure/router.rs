@@ -180,6 +180,25 @@ impl Str0mRouter {
                                 }
                                 Event::RtpPacket(packet) => {
                                     if let Some(rtp) = classify(id, peer, packet, self.start, now) {
+                                        if peer.spec.guarded_publish {
+                                            let Some(grant) = peer.permission_lease.current(now)
+                                            else {
+                                                continue;
+                                            };
+                                            if (rtp.track == TrackKind::Audio
+                                                && !grant.can_publish_audio)
+                                                || (rtp.track != TrackKind::Audio
+                                                    && !grant.can_publish_video)
+                                            {
+                                                continue;
+                                            }
+                                        } else if (rtp.track == TrackKind::Audio
+                                            && !peer.spec.can_publish_audio)
+                                            || (rtp.track != TrackKind::Audio
+                                                && !peer.spec.can_publish_video)
+                                        {
+                                            continue;
+                                        }
                                         if record_inbound(
                                             id,
                                             peer,
@@ -616,6 +635,105 @@ impl MediaRouter for Str0mRouter {
             self.refresh_viewers(other);
         }
         info!(session = %id, "session closed");
+    }
+
+    fn set_publish_audio(&mut self, id: &SessionId, allowed: bool) -> Result<(), RouterError> {
+        let peer = self
+            .peers
+            .get_mut(id)
+            .ok_or_else(|| RouterError::UnknownSession(id.clone()))?;
+        if peer.spec.guarded_publish {
+            return Err(RouterError::Rejected(
+                "guarded session requires atomic permissions".into(),
+            ));
+        }
+        peer.spec.can_publish_audio = allowed;
+        Ok(())
+    }
+
+    fn set_publish_video(&mut self, id: &SessionId, allowed: bool) -> Result<(), RouterError> {
+        let peer = self
+            .peers
+            .get_mut(id)
+            .ok_or_else(|| RouterError::UnknownSession(id.clone()))?;
+        if peer.spec.guarded_publish {
+            return Err(RouterError::Rejected(
+                "guarded session requires atomic permissions".into(),
+            ));
+        }
+        let resumed = allowed && !peer.spec.can_publish_video;
+        peer.spec.can_publish_video = allowed;
+        let ssrcs: Vec<u32> = if resumed {
+            peer.spec
+                .video_layers
+                .iter()
+                .map(|layer| layer.ssrc)
+                .chain(peer.spec.screen.iter().map(|screen| screen.ssrc))
+                .collect()
+        } else {
+            Vec::new()
+        };
+        for ssrc in ssrcs {
+            self.request_keyframe(
+                KeyframeNeed {
+                    publisher: id.clone(),
+                    ssrc,
+                },
+                KeyframeRequestKind::Pli,
+                Instant::now(),
+            );
+        }
+        Ok(())
+    }
+
+    fn set_publish_permissions(
+        &mut self,
+        id: &SessionId,
+        update: crate::domain::permission_lease::PermissionUpdate,
+    ) -> Result<(), RouterError> {
+        let peer = self
+            .peers
+            .get_mut(id)
+            .ok_or_else(|| RouterError::UnknownSession(id.clone()))?;
+        if !peer.spec.guarded_publish {
+            return Err(RouterError::Rejected("session is not guarded".into()));
+        }
+        let wall_ms = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_err(|_| RouterError::Rejected("invalid system clock".into()))?
+            .as_millis()
+            .try_into()
+            .map_err(|_| RouterError::Rejected("invalid system clock".into()))?;
+        let now = Instant::now();
+        let resumed = update.can_publish_video
+            && !peer
+                .permission_lease
+                .current(now)
+                .is_some_and(|grant| grant.can_publish_video);
+        peer.permission_lease
+            .apply(update, wall_ms, now)
+            .map_err(|e| RouterError::Rejected(e.into()))?;
+        let ssrcs: Vec<u32> = if resumed {
+            peer.spec
+                .video_layers
+                .iter()
+                .map(|layer| layer.ssrc)
+                .chain(peer.spec.screen.iter().map(|screen| screen.ssrc))
+                .collect()
+        } else {
+            Vec::new()
+        };
+        for ssrc in ssrcs {
+            self.request_keyframe(
+                KeyframeNeed {
+                    publisher: id.clone(),
+                    ssrc,
+                },
+                KeyframeRequestKind::Pli,
+                now,
+            );
+        }
+        Ok(())
     }
 
     fn set_sink_wants(&mut self, id: &SessionId, wants: SinkWants) -> Result<(), RouterError> {
