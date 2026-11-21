@@ -6,7 +6,7 @@ edition = "2024"
 rust-version = "1.99"
 license = "UNLICENSED"
 publish = false
-repository = "https://github.com/discordy-voics/voice"
+repository = "https://github.com/voics-app/voice"
 
 [dependencies]
 clap = { version = "4", features = ["derive", "env"] }

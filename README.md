@@ -4,10 +4,10 @@ Voics voice: the signaling service (Elixir), the SFU (Rust, [str0m](https://gith
 
 | Component | Path | Image | Role |
 |---|---|---|---|
-| voice-signaling | `signaling/` | `ghcr.io/discordy-voics/voice-signaling` | Voice WebSocket (`/voice`, port 4100), room registry, SFU control client, etcd discovery, drain |
-| voice-sfu | `sfu/` | `ghcr.io/discordy-voics/voice-sfu` | UDP media mux (port 50000), ICE-lite and DTLS-SRTP, audio and simulcast/SVC video forwarding, NDJSON control (`127.0.0.1:4101`) |
+| voice-signaling | `signaling/` | `ghcr.io/voics-app/voice-signaling` | Voice WebSocket (`/voice`, port 4100), room registry, SFU control client, etcd discovery, drain |
+| voice-sfu | `sfu/` | `ghcr.io/voics-app/voice-sfu` | UDP media mux (port 50000), ICE-lite and DTLS-SRTP, audio and simulcast/SVC video forwarding, NDJSON control (`127.0.0.1:4101`) |
 | regionctl | `regionctl/` | none (release binary) | `add`, `list`, `drain`, `undrain` |
-| voice-prober | `prober/` | `ghcr.io/discordy-voics/voice-prober` | Independent synthetic WebSocket/ICE/DTLS/RTP observations, leased health results, metrics and exact-key blacklist commands |
+| voice-prober | `prober/` | `ghcr.io/voics-app/voice-prober` | Independent synthetic WebSocket/ICE/DTLS/RTP observations, leased health results, metrics and exact-key blacklist commands |
 
 The design follows [How Discord handles two and a half million concurrent voice users using WebRTC](https://discord.com/blog/how-discord-handles-two-and-half-million-concurrent-voice-users-using-webrtc): one SFU per node, all channels of a guild on one node, signaling decoupled from media, and state rebuilt by replaying sessions when the SFU restarts. The wire contracts are the pinned interface **P8** of the master plan; see [ARCHITECTURE.md](ARCHITECTURE.md).
 
@@ -129,7 +129,7 @@ regionctl undrain eu-west-1
 
 ## Pending owner actions
 
-- **GitHub Actions**: `ci.yml` calls the reusable workflows of `discordy-voics/.github@main`; they run once the repository is pushed and the runner scale set exists.
+- **GitHub Actions**: `ci.yml` calls the reusable workflows of `voics-app/.github@main`; they run once the repository is pushed and the runner scale set exists.
 - **Cloudflare**: `regionctl add` needs a real `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ZONE_ID`. It was verified against a mock of the Cloudflare API only. A region reached through the Cloudflare tunnel also needs its tunnel ingress rule (see the voice-regions runbook).
 - **UDP 50000** must be reachable at each region's public IP (router forward for `nl-home`).
 - **Gateway integration** (`VOICE_TOKEN_SECRET`, etcd drain marker) was verified against the pinned interfaces, not against a running gateway.
