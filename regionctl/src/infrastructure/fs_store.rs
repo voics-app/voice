@@ -26,7 +26,7 @@ impl FsRegionStore {
         let regions_dir = gitops_dir.join("regions");
         if !regions_dir.is_dir() {
             return Err(AppError::Store(format!(
-                "{} has no regions/ directory; point --gitops-dir at a checkout of discordy-voics/gitops",
+                "{} has no regions/ directory; point --gitops-dir at a checkout of voics-app/gitops",
                 gitops_dir.display()
             )));
         }

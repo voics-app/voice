@@ -20,13 +20,13 @@ concurrency:
 jobs:
   gitflow:
     if: github.event_name == 'pull_request'
-    uses: discordy-voics/.github/.github/workflows/gitflow-guard.yml@main
+    uses: voics-app/.github/.github/workflows/gitflow-guard.yml@main
 
   signaling:
     permissions:
       contents: read
       actions: read   # shared workflow: tag builds look up the main run of this commit
-    uses: discordy-voics/.github/.github/workflows/elixir.yml@main
+    uses: voics-app/.github/.github/workflows/elixir.yml@main
     with:
       working-directory: signaling
       image-name: voice-signaling
@@ -37,7 +37,7 @@ jobs:
     permissions:
       contents: read
       actions: read   # shared workflow: tag builds look up the main run of this commit
-    uses: discordy-voics/.github/.github/workflows/rust.yml@main
+    uses: voics-app/.github/.github/workflows/rust.yml@main
     with:
       working-directory: sfu
       image-name: voice-sfu
@@ -48,7 +48,7 @@ jobs:
     permissions:
       contents: read
       actions: read   # shared workflow: tag builds look up the main run of this commit
-    uses: discordy-voics/.github/.github/workflows/rust.yml@main
+    uses: voics-app/.github/.github/workflows/rust.yml@main
     with:
       working-directory: regionctl
       image-name: regionctl
@@ -58,7 +58,7 @@ jobs:
     permissions:
       contents: read
       actions: read
-    uses: discordy-voics/.github/.github/workflows/rust.yml@main
+    uses: voics-app/.github/.github/workflows/rust.yml@main
     with:
       working-directory: prober
       image-name: voice-prober
@@ -71,7 +71,7 @@ jobs:
       matrix:
         component: [signaling, sfu, prober]
     permissions: {contents: read, packages: write, id-token: write}
-    uses: discordy-voics/.github/.github/workflows/docker.yml@main
+    uses: voics-app/.github/.github/workflows/docker.yml@main
     with:
       image-name: voice-${{ matrix.component }}
       description: Voics voice ${{ matrix.component }}

@@ -19,7 +19,7 @@ use crate::infrastructure::gateway::GatewayClient;
 #[derive(Debug, Parser)]
 #[command(name = "regionctl", version, about)]
 struct Cli {
-    /// Checkout of the `discordy-voics/gitops` repository (add, list, drain --region).
+    /// Checkout of the `voics-app/gitops` repository (add, list, drain --region).
     #[arg(long, global = true, env = "REGIONCTL_GITOPS_DIR")]
     gitops_dir: Option<PathBuf>,
 

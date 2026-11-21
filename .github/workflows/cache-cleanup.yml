@@ -1,4 +1,4 @@
-# Weekly GitHub Actions cache hygiene (discordy-voics/gitops#38): drops caches unused for 7 days and keeps the
+# Weekly GitHub Actions cache hygiene (voics-app/gitops#38): drops caches unused for 7 days and keeps the
 # repository well below the 10 GB cache limit.
 name: cache-cleanup
 
@@ -20,6 +20,6 @@ jobs:
     permissions:
       actions: write
       contents: read
-    uses: discordy-voics/.github/.github/workflows/cache-cleanup.yml@main
+    uses: voics-app/.github/.github/workflows/cache-cleanup.yml@main
     with:
       dry-run: ${{ inputs.dry-run || false }}
