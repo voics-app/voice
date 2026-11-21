@@ -8,7 +8,7 @@ use std::net::Ipv4Addr;
 pub const WORKER_ID_RANGE: std::ops::RangeInclusive<u16> = 192..=255;
 
 const DRAIN_LITERAL: &str = "VOICE_DRAIN_ON_START=true";
-const RESERVED_NAMES: [&str; 3] = ["common", "template", "kustomization"];
+const RESERVED_NAMES: [&str; 4] = ["common", "dev", "template", "kustomization"];
 
 /// Why a region operation was rejected.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
@@ -339,6 +339,7 @@ mod tests {
             "1abc",
             "has space",
             "common",
+            "dev",
             "template",
             "a_b",
             &"x".repeat(25),

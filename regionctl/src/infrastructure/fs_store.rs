@@ -7,7 +7,9 @@ use std::path::{Path, PathBuf};
 use crate::application::error::AppError;
 use crate::application::ports::RegionStore;
 
-const NOT_REGIONS: [&str; 2] = ["_template", "common"];
+// These directories compose shared or environment-level resources, not node overlays.
+// `dev` is the GitOps aggregate referencing common and nl-dev; do not allocate it a worker.
+const NOT_REGIONS: [&str; 3] = ["_template", "common", "dev"];
 const OVERLAY_FILE: &str = "kustomization.yaml";
 
 /// `RegionStore` over `<gitops-dir>/regions`.
@@ -100,10 +102,10 @@ mod tests {
     }
 
     #[test]
-    fn reads_and_writes_overlays_and_skips_template_and_common() {
+    fn reads_and_writes_overlays_and_skips_shared_layers() {
         let dir = tempfile::tempdir().unwrap();
         let regions = dir.path().join("regions");
-        for sub in ["_template", "common", "nl-home"] {
+        for sub in ["_template", "common", "dev", "nl-home"] {
             fs::create_dir_all(regions.join(sub)).unwrap();
         }
         fs::write(
