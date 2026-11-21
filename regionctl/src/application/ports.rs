@@ -8,6 +8,8 @@ use super::error::AppError;
 pub trait RegionStore {
     /// Node overlay directories (excluding `_template`, `common` and the `dev` aggregate), sorted.
     fn names(&self) -> Result<Vec<String>, AppError>;
+    /// Whether any filesystem entry already occupies the proposed overlay name.
+    fn entry_exists(&self, name: &str) -> Result<bool, AppError>;
     /// The overlay of a region, if it exists.
     fn read_overlay(&self, name: &str) -> Result<Option<String>, AppError>;
     /// Creates or replaces the overlay of a region.

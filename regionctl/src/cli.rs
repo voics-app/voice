@@ -9,8 +9,11 @@ use clap::{Args, Parser, Subcommand};
 use crate::application::add_region::{AddRegion, add_region};
 use crate::application::drain_node::set_node_drain;
 use crate::application::list_regions::{DnsStatus, list_regions};
-use crate::application::ports::{DnsChange, DnsGateway};
+use crate::application::ports::{DnsChange, DnsGateway, RegionStore};
 use crate::application::set_drain::{DrainChange, set_region_drain};
+use crate::domain::region::{
+    NodeId, RegionName, next_worker_id, parse_overlay, parse_public_host, parse_public_ip,
+};
 use crate::infrastructure::cloudflare::{Cloudflare, Credentials, DEFAULT_API_BASE};
 use crate::infrastructure::fs_store::FsRegionStore;
 use crate::infrastructure::gateway::GatewayClient;
@@ -63,6 +66,26 @@ enum Command {
         /// Create the record DNS-only instead of proxied through Cloudflare.
         #[arg(long)]
         dns_only: bool,
+    },
+    /// Preview the manual work for another node in an existing region (offline, read-only).
+    PlanNode {
+        /// Existing logical region.
+        region: String,
+        /// Unique voice node ID, also used as the proposed overlay directory and name suffix.
+        #[arg(long)]
+        node_id: String,
+        /// Public IPv4 address advertised by this node.
+        #[arg(long)]
+        public_ip: String,
+        /// Distinct public WebSocket hostname for this node.
+        #[arg(long)]
+        public_host: String,
+        /// Public and local UDP media port.
+        #[arg(long, value_parser = clap::value_parser!(u16).range(1..))]
+        udp_port: u16,
+        /// Dedicated Kubernetes node name (kubernetes.io/hostname).
+        #[arg(long)]
+        k8s_node: String,
     },
     /// List regions and the state of their DNS records.
     List,
@@ -144,6 +167,25 @@ fn execute(cli: Cli, env: &impl Fn(&str) -> Option<String>) -> Result<(), String
             );
             Ok(())
         }
+        Command::PlanNode {
+            region,
+            node_id,
+            public_ip,
+            public_host,
+            udp_port,
+            k8s_node,
+        } => {
+            let store = open_store(cli.gitops_dir.as_ref())?;
+            plan_node(
+                &store,
+                &region,
+                &node_id,
+                &public_ip,
+                &public_host,
+                udp_port,
+                &k8s_node,
+            )
+        }
         Command::List => {
             let store = open_store(cli.gitops_dir.as_ref())?;
             let dns = cloudflare(env);
@@ -213,6 +255,66 @@ fn drain(
     set_node_drain(&gateway, &node_id, drained).map_err(|e| e.to_string())?;
     println!(
         "node {node_id} is now {state}; confirm with `etcdctl get /discordy/voice/nodes/<region>/{node_id}`"
+    );
+    Ok(())
+}
+
+// This deliberately prints a checklist, not a manifest: the existing region overlay cannot be
+// copied blindly because its selectors and resource names belong to the first node.
+fn plan_node(
+    store: &dyn RegionStore,
+    region: &str,
+    node_id: &str,
+    ip: &str,
+    host: &str,
+    port: u16,
+    k8s_node: &str,
+) -> Result<(), String> {
+    RegionName::parse(region).map_err(|e| e.to_string())?;
+    NodeId::parse(node_id).map_err(|e| e.to_string())?;
+    parse_public_ip(ip).map_err(|e| e.to_string())?;
+    parse_public_host(host).map_err(|e| e.to_string())?;
+    // Kubernetes hostname labels are DNS subdomains; reject unsafe/unusable input.
+    if k8s_node.len() > 253 || k8s_node.split('.').any(|part| NodeId::parse(part).is_err()) {
+        return Err("invalid Kubernetes node hostname".into());
+    }
+    let names = store.names().map_err(|e| e.to_string())?;
+    if !names.iter().any(|n| n == region) {
+        return Err(format!("region `{region}` does not exist"));
+    }
+    if store.entry_exists(node_id).map_err(|e| e.to_string())? {
+        return Err(format!("overlay `{node_id}` already exists"));
+    }
+    let mut used = Vec::new();
+    for name in names {
+        let text = store
+            .read_overlay(&name)
+            .map_err(|e| e.to_string())?
+            .ok_or_else(|| {
+                format!("overlay `{name}` has no kustomization.yaml; cannot plan safely")
+            })?;
+        let existing = parse_overlay(&name, &text)
+            .map_err(|e| format!("cannot read overlay `{name}`: {e}"))?;
+        if existing.node_id == node_id {
+            return Err(format!("node ID `{node_id}` already used by `{name}`"));
+        }
+        if existing.public_host == host {
+            return Err(format!("host `{host}` already used by `{name}`"));
+        }
+        used.push(existing.worker_id);
+    }
+    let worker = next_worker_id(&used).map_err(|e| e.to_string())?;
+    println!(
+        "Offline preview only: no DNS, files, or infrastructure changed.\n\
+Proposed overlay: regions/{node_id}/kustomization.yaml (register in regions/kustomization.yaml after review)\n\
+  VOICE_REGION={region}\n  VOICE_NODE_ID={node_id}\n  VOICE_PUBLIC_WS_URL=wss://{host}\n  VOICE_PUBLIC_IP={ip}\n  SFU_PUBLIC_IP={ip}\n  SNOWFLAKE_WORKER_ID={worker}\n  VOICE_UDP_PORT={port}\n  SFU_UDP_BIND=0.0.0.0:{port}\n\
+Manual preparation:\n\
+  - Base the new overlay on ../_template, with nameSuffix: -{node_id}; do not copy the existing region overlay unchanged.\n\
+  - Add a unique node label with includeSelectors: true, in addition to the logical region label, so each Deployment and Service selects only its own pod.\n\
+  - Pin the Deployment to kubernetes.io/hostname={k8s_node} using nodeSelector. Use a dedicated node: hostNetwork also binds TCP 4100 and 127.0.0.1:4101.\n\
+  - Set the SFU containerPort and hostPort to {port}/UDP; forward public {ip}:{port}/UDP to that node and port.\n\
+  - Set the Ingress host to {host}; prepare a separate DNS A record to {ip} and confirm the ingress routes to the new node's Service.\n\
+  - Review resource names, selectors, port availability, NAT, DNS and rendered kustomize output before committing. This offline scan cannot resolve Flux substitutions or inspect DNS, cluster state, other manifest layers, or concurrent plans; verify uniqueness there and recheck the worker ID before applying."
     );
     Ok(())
 }

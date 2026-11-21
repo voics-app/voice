@@ -6,7 +6,7 @@ Voics voice: the signaling service (Elixir), the SFU (Rust, [str0m](https://gith
 |---|---|---|---|
 | voice-signaling | `signaling/` | `ghcr.io/discordy-voics/voice-signaling` | Voice WebSocket (`/voice`, port 4100), room registry, SFU control client, etcd discovery, drain |
 | voice-sfu | `sfu/` | `ghcr.io/discordy-voics/voice-sfu` | UDP media mux (port 50000), ICE-lite and DTLS-SRTP, audio and simulcast/SVC video forwarding, NDJSON control (`127.0.0.1:4101`) |
-| regionctl | `regionctl/` | none (release binary) | `add`, `list`, `drain`, `undrain` |
+| regionctl | `regionctl/` | none (release binary) | `add`, `plan-node`, `list`, `drain`, `undrain` |
 | voice-prober | `prober/` | `ghcr.io/discordy-voics/voice-prober` | Independent synthetic WebSocket/ICE/DTLS/RTP observations, leased health results, metrics and exact-key blacklist commands |
 
 The design follows [How Discord handles two and a half million concurrent voice users using WebRTC](https://discord.com/blog/how-discord-handles-two-and-half-million-concurrent-voice-users-using-webrtc): one SFU per node, all channels of a guild on one node, signaling decoupled from media, and state rebuilt by replaying sessions when the SFU restarts. The wire contracts are the pinned interface **P8** of the master plan; see [ARCHITECTURE.md](ARCHITECTURE.md).
@@ -128,6 +128,8 @@ regionctl undrain eu-west-1
 `add` upserts a proxied A record for `--public-host` (`--dns-only` to skip the proxy), writes `regions/<name>/kustomization.yaml` from the template conventions of the gitops repository (next free `SNOWFLAKE_WORKER_ID` in 192-255, node id `<name>-1`), and registers the overlay in `regions/kustomization.yaml`. It never commits: review the diff and open the PR.
 
 `add` fails closed on worker IDs: every directory under `regions/` (except `_template`, `common` and the `dev` aggregate) must have a readable `kustomization.yaml` with a `SNOWFLAKE_WORKER_ID`. If one is missing or malformed, `add` aborts before touching DNS or files, because a skipped overlay could hide a used ID and cause a duplicate on the 3-node cluster. Fix or remove the broken directory and rerun.
+
+`plan-node <region> --node-id <id> --public-ip <ip> --public-host <host> --udp-port <port> --k8s-node <name>` previews, offline and read-only, what a second node in an existing region needs: proposed overlay values (including the next free worker ID) and a manual checklist (own node label, `nodeSelector` on a dedicated Kubernetes node, UDP port forward, ingress host, separate DNS record). It writes nothing and touches no DNS. It rejects a missing region, an existing overlay path, and a duplicate node ID or public host, and fails closed on unreadable overlays like `add`. Recheck the worker ID before applying if another change is in flight.
 
 ## Pending owner actions
 

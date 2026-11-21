@@ -628,3 +628,73 @@ fn drain_needs_exactly_one_target() {
         ExitCode::from(2)
     );
 }
+
+#[test]
+fn plan_node_is_offline_read_only_and_checks_collisions() {
+    let dir = gitops_checkout();
+    let gitops = dir.path().to_str().unwrap();
+    let before = read(dir.path(), "regions/nl-home/kustomization.yaml");
+    let root = read(dir.path(), "regions/kustomization.yaml");
+    let args = [
+        "plan-node",
+        "nl-home",
+        "--node-id",
+        "nl-home-2",
+        "--public-ip",
+        "198.51.100.4",
+        "--public-host",
+        "rtc-2.voics.nl",
+        "--udp-port",
+        "50001",
+        "--k8s-node",
+        "node-2",
+        "--gitops-dir",
+        gitops,
+    ];
+    let regions = dir.path().join("regions");
+    fs::create_dir(regions.join("dev")).unwrap();
+    fs::write(regions.join("dev/kustomization.yaml"), "apiVersion: kustomize.config.k8s.io/v1beta1\nkind: Kustomization\nresources:\n  - ../common\n  - ../nl-dev\n").unwrap();
+    fs::create_dir(regions.join("nl-dev")).unwrap();
+    fs::write(
+        regions.join("nl-dev/kustomization.yaml"),
+        NL_HOME
+            .replace("nl-home-gen-serv", "nl-dev-discordy-dev")
+            .replace("SNOWFLAKE_WORKER_ID=192", "SNOWFLAKE_WORKER_ID=193"),
+    )
+    .unwrap();
+    fs::write(regions.join("occupied"), "pre-existing file").unwrap();
+    let api = start_mock();
+    for reserved in ["common", "dev", "_template", "occupied"] {
+        let mut collision = args;
+        collision[3] = reserved;
+        assert_eq!(
+            run_with(&collision, &cf_env(&api)),
+            ExitCode::FAILURE,
+            "{reserved}"
+        );
+    }
+    assert!(api.state.lock().unwrap().requests.is_empty());
+    assert_eq!(
+        fs::read_to_string(regions.join("occupied")).unwrap(),
+        "pre-existing file"
+    );
+    assert_eq!(run_with(&args, &cf_env(&api)), ExitCode::SUCCESS);
+    assert!(api.state.lock().unwrap().requests.is_empty());
+    assert_eq!(
+        read(dir.path(), "regions/nl-home/kustomization.yaml"),
+        before
+    );
+    assert_eq!(read(dir.path(), "regions/kustomization.yaml"), root);
+    assert!(!dir.path().join("regions/nl-home-2").exists());
+    let mut duplicate = args;
+    duplicate[3] = "nl-home-gen-serv";
+    assert_eq!(run(&duplicate, &[]), ExitCode::FAILURE);
+    let mut missing = args;
+    missing[1] = "unknown";
+    assert_eq!(run(&missing, &[]), ExitCode::FAILURE);
+    let mut invalid_port = args;
+    invalid_port[9] = "0";
+    assert_eq!(run(&invalid_port, &[]), ExitCode::from(2));
+    fs::create_dir(dir.path().join("regions/broken")).unwrap();
+    assert_eq!(run(&args, &[]), ExitCode::FAILURE);
+}

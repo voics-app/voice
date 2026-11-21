@@ -101,6 +101,9 @@ pub(crate) mod fakes {
         fn names(&self) -> Result<Vec<String>, AppError> {
             Ok(self.overlays.borrow().keys().cloned().collect())
         }
+        fn entry_exists(&self, name: &str) -> Result<bool, AppError> {
+            Ok(self.overlays.borrow().contains_key(name))
+        }
         fn read_overlay(&self, name: &str) -> Result<Option<String>, AppError> {
             Ok(self.overlays.borrow().get(name).cloned())
         }
