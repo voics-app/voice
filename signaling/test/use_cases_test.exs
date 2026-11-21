@@ -215,6 +215,27 @@ defmodule DiscordyVoice.UseCasesTest do
       assert payload.screen == %{ssrc: 444_444, rtx_ssrc: 555_555}
     end
 
+    test "announces the separate soundboard SSRC for audio-only and late participants", %{
+      deps: deps
+    } do
+      {a, _} = join(:a, "a", "ch-1", deps)
+      {_b, _} = join(:b, "b", "ch-1", deps)
+
+      offer =
+        put_in(Fixtures.select_protocol(), ["data", "ssrcs"], %{
+          "audio" => 111,
+          "soundboard" => 222
+        })
+
+      [{:reply, 4, _}] = Conn.send_frame(a, 1, offer)
+      assert [{:create_session, %{audio_ssrc: 111, soundboard_ssrc: 222}}] = FakeSfu.calls()
+      assert_receive {:pushed, :b, 12, %{audio_ssrc: 111, soundboard_ssrc: 222}}
+      assert [] = Conn.send_frame(a, 12, %{"streams" => []})
+      assert_receive {:pushed, :b, 12, %{audio_ssrc: 111, soundboard_ssrc: 222}}
+      {_c, replies} = join(:c, "c", "ch-1", deps)
+      assert Enum.any?(replies, &match?({:reply, 12, %{soundboard_ssrc: 222}}, &1))
+    end
+
     test "invalid client ssrcs fall back to the plan", %{deps: deps} do
       {conn, _} = join(:a, "a", "ch-1", deps)
       planned = Conn.session(conn).ssrcs.audio

@@ -11,11 +11,16 @@ defmodule DiscordyVoice.Domain.SsrcPlan do
   @max_ssrc 0xFFFFFFFF
 
   @enforce_keys [:audio, :layers]
-  defstruct [:audio, :layers, screen: nil]
+  defstruct [:audio, :layers, screen: nil, soundboard: nil]
 
   @type layer :: %{rid: String.t(), quality: 0..100, ssrc: pos_integer(), rtx_ssrc: pos_integer()}
   @type stream :: %{ssrc: pos_integer(), rtx_ssrc: non_neg_integer()}
-  @type t :: %__MODULE__{audio: pos_integer(), layers: [layer()], screen: stream() | nil}
+  @type t :: %__MODULE__{
+          audio: pos_integer(),
+          layers: [layer()],
+          screen: stream() | nil,
+          soundboard: pos_integer() | nil
+        }
 
   @doc "Number of SSRCs a plan consumes."
   @spec size() :: pos_integer()

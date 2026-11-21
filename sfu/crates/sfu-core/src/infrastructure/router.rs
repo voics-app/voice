@@ -291,6 +291,16 @@ impl Str0mRouter {
     }
 
     fn fan_out(&mut self, packet: &InboundRtp) {
+        // The internal control plane, not the RTP sender, grants this capability.
+        // With no live grants wired yet, soundboard publication stays fail-closed.
+        if packet.track == TrackKind::Soundboard
+            && !self
+                .peers
+                .get(&packet.publisher)
+                .is_some_and(|peer| peer.spec.can_publish_soundboard)
+        {
+            return;
+        }
         let dtx = packet.track == TrackKind::Audio && opus::is_dtx_frame(&packet.payload);
         for (id, peer) in self.peers.iter_mut() {
             if *id != packet.publisher && peer.alive {
@@ -698,6 +708,7 @@ fn record_inbound(
                 });
             }
         }
+        TrackKind::Soundboard => {}
         TrackKind::VideoLayer(index) => {
             if let Some(meter) = peer.layer_meters.get_mut(index) {
                 let was_inactive = meter.estimate_bps(rtp.arrival_us) == 0;

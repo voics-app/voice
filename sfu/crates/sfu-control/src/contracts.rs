@@ -64,6 +64,12 @@ pub struct WireSession {
     pub local_pwd: Option<String>,
     /// SSRC of the publisher's audio.
     pub audio_ssrc: u32,
+    /// Optional separate soundboard audio SSRC.
+    #[serde(default)]
+    pub soundboard_ssrc: Option<u32>,
+    /// Trusted signaling authorization, disabled for older clients.
+    #[serde(default)]
+    pub can_publish_soundboard: bool,
     /// Negotiated codecs.
     pub codecs: Vec<WireCodec>,
     /// Simulcast layers, ascending quality.
