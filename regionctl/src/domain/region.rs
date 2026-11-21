@@ -181,9 +181,9 @@ patches:\n\
 \x20       path: /spec/rules/0/host\n\
 \x20       value: {host}\n\
 images:\n\
-\x20 - name: ghcr.io/discordy-voics/voice-signaling\n\
+\x20 - name: ghcr.io/voics-app/voice-signaling\n\
 \x20   newTag: 0.1.0 # {{\"$imagepolicy\": \"flux-system:voice-signaling:tag\"}}\n\
-\x20 - name: ghcr.io/discordy-voics/voice-sfu\n\
+\x20 - name: ghcr.io/voics-app/voice-sfu\n\
 \x20   newTag: 0.1.0 # {{\"$imagepolicy\": \"flux-system:voice-sfu:tag\"}}\n",
         name = region.name,
         node_id = region.node_id,
